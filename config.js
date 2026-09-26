@@ -22,7 +22,7 @@
 const CONFIG = {
   // Ganti string kosong di bawah dengan URL Web App Apps Script Anda:
   // Contoh: "https://script.google.com/macros/s/AKfycbx.../exec"
-  API_URL: "",
+  API_URL: "https://script.google.com/macros/s/AKfycbyeNECo4qhH22GI43mxpr_PixVsLnE39wjJsXEdo6PhoIHd2mJxWKYOpiQGf7-aJXuC/exec",
 
   // Nama Brand
   SITE_NAME: "NGULEMIN",
