@@ -2535,7 +2535,9 @@ const handleLogin = async (e: React.FormEvent) => {
                                       },
                                       "Pesanan berhasil dihapus dari Spreadsheet."
                                     );
-                                }}
+                                  }
+                                );
+                              }}
                                 className="text-red-600 hover:text-red-800 p-1.5 hover:bg-red-50 rounded"
                                 title="Hapus pesanan"
                               >
