@@ -1313,11 +1313,37 @@ const handleLogin = async (e: React.FormEvent) => {
 };
 
   const handleLogout = () => {
-    localStorage.removeItem('ngulemin_admin_token');
-    localStorage.removeItem('ngulemin_admin_user');
-    setAdminToken(null);
-    setCurrentView('public');
-    triggerToast("Berhasil keluar dari dashboard.");
+    void (async () => {
+      try {
+        if (adminToken) {
+          await callApi(
+            "logout",
+            {},
+            true
+          );
+        }
+      } catch (error) {
+        console.warn(
+          "Logout API warning:",
+          error
+        );
+      } finally {
+        localStorage.removeItem(
+          "ngulemin_admin_token"
+        );
+  
+        localStorage.removeItem(
+          "ngulemin_admin_user"
+        );
+  
+        setAdminToken(null);
+        setCurrentView("public");
+  
+        triggerToast(
+          "Berhasil keluar dari dashboard."
+        );
+      }
+    })();
   };
 
   const renderIcon = (iconName: string) => {
@@ -2480,12 +2506,10 @@ const handleLogin = async (e: React.FormEvent) => {
                               <select
                                 value={ord.status || "Baru"}
                                 onChange={(e) => {
-                                  const newStatus = e.target.value;
-                                  setData((prev: typeof INITIAL_DATA) => ({
-                                    ...prev,
-                                    orders: prev.orders.map((o: any) => o.id === ord.id ? { ...o, status: newStatus } : o)
-                                  }));
-                                  triggerToast(`Status pesanan ${ord.id} diubah ke ${newStatus}`);
+                                  updateOrderStatus(
+                                    ord.id,
+                                    e.target.value
+                                  );
                                 }}
                                 className="px-2 py-1 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded text-xs font-semibold"
                               >
@@ -2498,12 +2522,19 @@ const handleLogin = async (e: React.FormEvent) => {
                               <button
                                 onClick={() => {
                                   openDeleteConfirm("Hapus Pesanan", `Apakah Anda yakin ingin menghapus pesanan ${ord.id} (${ord.customerName})?`, () => {
-                                    setData((prev: typeof INITIAL_DATA) => ({
-                                      ...prev,
-                                      orders: prev.orders.filter((o: any) => o.id !== ord.id)
-                                    }));
-                                    triggerToast("Pesanan berhasil dihapus.");
-                                  });
+                                    deleteEntity(
+                                      "deleteOrder",
+                                      ord.id,
+                                      () => {
+                                        setData((prev: typeof INITIAL_DATA) => ({
+                                          ...prev,
+                                          orders: prev.orders.filter(
+                                            (o: any) => o.id !== ord.id
+                                          )
+                                        }));
+                                      },
+                                      "Pesanan berhasil dihapus dari Spreadsheet."
+                                    );
                                 }}
                                 className="text-red-600 hover:text-red-800 p-1.5 hover:bg-red-50 rounded"
                                 title="Hapus pesanan"
@@ -2526,7 +2557,7 @@ const handleLogin = async (e: React.FormEvent) => {
                 <div className="flex items-center justify-between border-b border-[#E8E1D9] pb-4">
                   <h2 className="text-xl font-serif-luxury font-bold text-[#2D2723]">Kelola Hero & Home Section</h2>
                   <button
-                    onClick={() => triggerToast("Perubahan Home berhasil disimpan!")}
+                    onClick={() => {void saveHome();}}
                     className="px-4 py-2 text-xs font-semibold text-white bg-[#8C6D46] hover:bg-[#735735] rounded-lg shadow-sm"
                   >
                     Simpan Perubahan
@@ -2829,12 +2860,19 @@ const handleLogin = async (e: React.FormEvent) => {
                                     type="button"
                                     onClick={() => {
                                       openDeleteConfirm("Hapus Tema", `Hapus tema "${t.Nama}"?`, () => {
-                                        setData((prev: typeof INITIAL_DATA) => ({
-                                          ...prev,
-                                          themes: prev.themes.filter((item: any) => item.ID !== t.ID)
-                                        }));
-                                        triggerToast("Tema berhasil dihapus.");
-                                      });
+                                        deleteEntity(
+                                          "deleteTheme",
+                                          t.ID,
+                                          () => {
+                                            setData((prev: typeof INITIAL_DATA) => ({
+                                              ...prev,
+                                              themes: prev.themes.filter(
+                                                (item: any) => item.ID !== t.ID
+                                              )
+                                            }));
+                                          },
+                                          "Tema berhasil dihapus dari Spreadsheet."
+                                        );
                                     }}
                                     className="p-1.5 text-xs text-red-600 hover:bg-red-50 rounded-lg border border-red-200 transition-colors cursor-pointer"
                                     title="Hapus Tema"
@@ -2929,12 +2967,19 @@ const handleLogin = async (e: React.FormEvent) => {
                           <button
                             onClick={() => {
                               openDeleteConfirm("Hapus Paket", `Hapus paket "${p.Nama}"?`, () => {
-                                setData((prev: typeof INITIAL_DATA) => ({
-                                  ...prev,
-                                  pricing: prev.pricing.filter((item: any) => item.ID !== p.ID)
-                                }));
-                                triggerToast("Paket berhasil dihapus.");
-                              });
+                                deleteEntity(
+                                  "deletePricing",
+                                  p.ID,
+                                  () => {
+                                    setData((prev: typeof INITIAL_DATA) => ({
+                                      ...prev,
+                                      pricing: prev.pricing.filter(
+                                        (item: any) => item.ID !== p.ID
+                                      )
+                                    }));
+                                  },
+                                  "Paket berhasil dihapus dari Spreadsheet."
+                                );
                             }}
                             className="text-xs text-red-600 hover:underline flex items-center gap-1"
                           >
@@ -2997,12 +3042,19 @@ const handleLogin = async (e: React.FormEvent) => {
                         <button
                           onClick={() => {
                             openDeleteConfirm("Hapus Fitur", `Hapus fitur "${f.title}"?`, () => {
-                              setData((prev: typeof INITIAL_DATA) => ({
-                                ...prev,
-                                features: prev.features.filter((item: any) => item.id !== f.id)
-                              }));
-                              triggerToast("Fitur dihapus.");
-                            });
+                              deleteEntity(
+                                "deleteFeature",
+                                f.id,
+                                () => {
+                                  setData((prev: typeof INITIAL_DATA) => ({
+                                    ...prev,
+                                    features: prev.features.filter(
+                                      (item: any) => item.id !== f.id
+                                    )
+                                  }));
+                                },
+                                "Fitur berhasil dihapus dari Spreadsheet."
+                              );
                           }}
                           className="text-red-500 hover:text-red-700 p-1"
                           title="Hapus Fitur"
@@ -3067,12 +3119,20 @@ const handleLogin = async (e: React.FormEvent) => {
                         <button
                           onClick={() => {
                             openDeleteConfirm("Hapus Testimoni", `Hapus ulasan dari "${t.name}"?`, () => {
-                              setData((prev: typeof INITIAL_DATA) => ({
-                                ...prev,
-                                testimonials: prev.testimonials.filter((item: any) => item.id !== t.id)
-                              }));
-                              triggerToast("Testimoni dihapus.");
-                            });
+                              deleteEntity(
+                                "deleteTestimonial",
+                                t.id,
+                                () => {
+                                  setData((prev: typeof INITIAL_DATA) => ({
+                                    ...prev,
+                                    testimonials:
+                                      prev.testimonials.filter(
+                                        (item: any) => item.id !== t.id
+                                      )
+                                  }));
+                                },
+                                "Testimoni berhasil dihapus dari Spreadsheet."
+                              );
                           }}
                           className="text-red-500 hover:text-red-700 p-1"
                           title="Hapus Testimoni"
@@ -3092,7 +3152,7 @@ const handleLogin = async (e: React.FormEvent) => {
                 <div className="flex items-center justify-between border-b border-[#E8E1D9] pb-4">
                   <h2 className="text-xl font-serif-luxury font-bold text-[#2D2723]">Kelola Langkah Cara Pesan</h2>
                   <button
-                    onClick={() => triggerToast("Langkah cara pesan berhasil disimpan!")}
+                    onClick={() => {void saveHowToOrder();}}
                     className="px-4 py-2 text-xs font-semibold text-white bg-[#8C6D46] hover:bg-[#735735] rounded-lg shadow-sm"
                   >
                     Simpan Perubahan
@@ -3185,12 +3245,19 @@ const handleLogin = async (e: React.FormEvent) => {
                         <button
                           onClick={() => {
                             openDeleteConfirm("Hapus FAQ", `Hapus pertanyaan "${f.question}"?`, () => {
-                              setData((prev: typeof INITIAL_DATA) => ({
-                                ...prev,
-                                faq: prev.faq.filter((item: any) => item.id !== f.id)
-                              }));
-                              triggerToast("FAQ berhasil dihapus.");
-                            });
+                              deleteEntity(
+                                "deleteFAQ",
+                                f.id,
+                                () => {
+                                  setData((prev: typeof INITIAL_DATA) => ({
+                                    ...prev,
+                                    faq: prev.faq.filter(
+                                      (item: any) => item.id !== f.id
+                                    )
+                                  }));
+                                },
+                                "FAQ berhasil dihapus dari Spreadsheet."
+                              );
                           }}
                           className="text-red-500 hover:text-red-700 p-1"
                           title="Hapus FAQ"
@@ -3220,7 +3287,7 @@ const handleLogin = async (e: React.FormEvent) => {
                       </p>
                     </div>
                     <button
-                      onClick={() => triggerToast("Akun admin & pengaturan berhasil disimpan!")}
+                      onClick={() => {void saveAdminUsername();}}
                       className="px-4 py-2 text-xs font-semibold text-white bg-[#8C6D46] hover:bg-[#735735] rounded-lg shadow-sm"
                     >
                       Simpan Perubahan
@@ -3357,7 +3424,7 @@ const handleLogin = async (e: React.FormEvent) => {
                   <div className="flex items-center justify-between border-b border-[#E8E1D9] pb-4">
                     <h2 className="text-xl font-serif-luxury font-bold text-[#2D2723]">Kontak & Integrasi Backend</h2>
                     <button
-                      onClick={() => triggerToast("Pengaturan berhasil disimpan!")}
+                      onClick={() => {void saveSettings();}}
                       className="px-4 py-2 text-xs font-semibold text-white bg-[#8C6D46] rounded-lg"
                     >
                       Simpan Pengaturan
@@ -4039,41 +4106,11 @@ setThemeModal(prev => ({ ...prev, open: false }));
             </div>
 
             <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                const d = pricingModal.data;
-                if (!d.Nama.trim()) {
-                  triggerToast("Nama paket tidak boleh kosong");
-                  return;
-                }
-                const featuresArray = d.FiturText.split('\n').map(s => s.trim()).filter(Boolean);
-                const finalPkg = {
-                  ID: d.ID,
-                  Nama: d.Nama,
-                  Harga: Number(d.Harga),
-                  Deskripsi: d.Deskripsi,
-                  Fitur: featuresArray,
-                  Label: d.Label,
-                  Featured: d.Featured,
-                  Status: d.Status,
-                  Urutan: 1
-                };
-
-                if (pricingModal.isEdit) {
-                  setData((prev: typeof INITIAL_DATA) => ({
-                    ...prev,
-                    pricing: prev.pricing.map((p: any) => p.ID === d.ID ? finalPkg : p)
-                  }));
-                  triggerToast("Paket harga berhasil diperbarui!");
-                } else {
-                  setData((prev: typeof INITIAL_DATA) => ({
-                    ...prev,
-                    pricing: [...prev.pricing, finalPkg]
-                  }));
-                  triggerToast("Paket baru berhasil ditambahkan!");
-                }
-                setPricingModal(prev => ({ ...prev, open: false }));
-              }}
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void savePricing();
+                }}
               className="p-5 sm:p-6 space-y-4 text-xs"
             >
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
@@ -4199,25 +4236,7 @@ setThemeModal(prev => ({ ...prev, open: false }));
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                const d = featureModal.data;
-                if (!d.title.trim()) {
-                  triggerToast("Judul fitur tidak boleh kosong");
-                  return;
-                }
-                if (featureModal.isEdit) {
-                  setData((prev: typeof INITIAL_DATA) => ({
-                    ...prev,
-                    features: prev.features.map((f: any) => f.id === d.id ? d : f)
-                  }));
-                  triggerToast("Fitur berhasil diperbarui!");
-                } else {
-                  setData((prev: typeof INITIAL_DATA) => ({
-                    ...prev,
-                    features: [...prev.features, d]
-                  }));
-                  triggerToast("Fitur baru berhasil ditambahkan!");
-                }
-                setFeatureModal(prev => ({ ...prev, open: false }));
+                void saveFeature();
               }}
               className="p-5 space-y-3.5 text-xs"
             >
@@ -4284,25 +4303,7 @@ setThemeModal(prev => ({ ...prev, open: false }));
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                const d = testiModal.data;
-                if (!d.name.trim() || !d.testi.trim()) {
-                  triggerToast("Nama dan isi ulasan wajib diisi");
-                  return;
-                }
-                if (testiModal.isEdit) {
-                  setData((prev: typeof INITIAL_DATA) => ({
-                    ...prev,
-                    testimonials: prev.testimonials.map((t: any) => t.id === d.id ? d : t)
-                  }));
-                  triggerToast("Testimoni berhasil diperbarui!");
-                } else {
-                  setData((prev: typeof INITIAL_DATA) => ({
-                    ...prev,
-                    testimonials: [...prev.testimonials, d]
-                  }));
-                  triggerToast("Testimoni berhasil ditambahkan!");
-                }
-                setTestiModal(prev => ({ ...prev, open: false }));
+                void saveTestimonial();
               }}
               className="p-5 space-y-3.5 text-xs"
             >
@@ -4378,27 +4379,9 @@ setThemeModal(prev => ({ ...prev, open: false }));
             </div>
 
             <form
-              onSubmit={(e) => {
+             onSubmit={(e) => {
                 e.preventDefault();
-                const d = faqModal.data;
-                if (!d.question.trim() || !d.answer.trim()) {
-                  triggerToast("Pertanyaan dan jawaban wajib diisi");
-                  return;
-                }
-                if (faqModal.isEdit) {
-                  setData((prev: typeof INITIAL_DATA) => ({
-                    ...prev,
-                    faq: prev.faq.map((item: any) => item.id === d.id ? d : item)
-                  }));
-                  triggerToast("FAQ berhasil diperbarui!");
-                } else {
-                  setData((prev: typeof INITIAL_DATA) => ({
-                    ...prev,
-                    faq: [...prev.faq, d]
-                  }));
-                  triggerToast("FAQ baru berhasil ditambahkan!");
-                }
-                setFaqModal(prev => ({ ...prev, open: false }));
+                void saveFaq();
               }}
               className="p-5 space-y-3.5 text-xs"
             >
