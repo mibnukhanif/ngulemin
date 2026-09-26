@@ -590,6 +590,14 @@ export default function App() {
   const [selectedCategory, setSelectedCategory] = useState<string>('Semua');
   const [newCategoryInput, setNewCategoryInput] = useState<string>('');
   const [showAdminPassword, setShowAdminPassword] = useState<boolean>(false);
+  const [showCurrentAdminPassword, setShowCurrentAdminPassword] = useState<boolean>(false);
+  const [showConfirmAdminPassword, setShowConfirmAdminPassword] = useState<boolean>(false);
+  const [newAdminUsername, setNewAdminUsername] = useState<string>(String(INITIAL_DATA.settings.adminUsername || 'admin'));
+  const [currentAdminPassword, setCurrentAdminPassword] = useState<string>('');
+  const [newAdminPassword, setNewAdminPassword] = useState<string>('');
+  const [confirmAdminPassword, setConfirmAdminPassword] = useState<string>('');
+  const [usernameSaving, setUsernameSaving] = useState<boolean>(false);
+  const [passwordSaving, setPasswordSaving] = useState<boolean>(false);
 
   // Admin Dashboard Sidebar State
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(false);
@@ -1437,7 +1445,11 @@ export default function App() {
   };
 
   const saveSettings = () => {
-    const { adminPassword, ...settingsToSave } = data.settings as any;
+    const {
+      adminPassword,
+      adminUsername,
+      ...settingsToSave
+    } = data.settings as any;
 
     triggerToast('Pengaturan diperbarui...');
 
@@ -1452,18 +1464,36 @@ export default function App() {
   };
 
   const saveAdminUsername = () => {
-    const username = String(data.settings.adminUsername || '').trim();
+    const username = newAdminUsername.trim();
+    const currentUsername = String(
+      data.settings.adminUsername || 'admin'
+    ).trim();
 
     if (!username) {
       triggerToast('Username admin tidak boleh kosong.');
       return;
     }
 
-    triggerToast('Username diperbarui...');
+    if (username === currentUsername) {
+      triggerToast('Username admin belum berubah.');
+      return;
+    }
+
+    setUsernameSaving(true);
+    triggerToast('Menyimpan username...');
 
     void callApi('updateAdminUsername', { username })
       .then(() => {
+        setData((prev: typeof INITIAL_DATA) => ({
+          ...prev,
+          settings: {
+            ...prev.settings,
+            adminUsername: username
+          }
+        }));
+
         const session = readAdminSession();
+
         if (session?.token) {
           storeAdminSession(
             session.token,
@@ -1471,13 +1501,67 @@ export default function App() {
             new Date(session.expiresAt).toISOString()
           );
         }
+
         triggerToast('Username admin berhasil diperbarui.');
       })
       .catch((error: any) => {
-        void refreshAllData(false);
         triggerToast(
           error.message || 'Gagal memperbarui username admin.'
         );
+      })
+      .finally(() => {
+        setUsernameSaving(false);
+      });
+  };
+
+  const saveAdminPassword = () => {
+    if (!currentAdminPassword) {
+      triggerToast('Masukkan password saat ini.');
+      return;
+    }
+
+    if (newAdminPassword.length < 6) {
+      triggerToast('Password baru minimal 6 karakter.');
+      return;
+    }
+
+    if (newAdminPassword !== confirmAdminPassword) {
+      triggerToast('Konfirmasi password baru tidak cocok.');
+      return;
+    }
+
+    setPasswordSaving(true);
+    triggerToast('Mengubah password...');
+
+    void callApi('changePassword', {
+      oldPassword: currentAdminPassword,
+      newPassword: newAdminPassword
+    })
+      .then(() => {
+        setCurrentAdminPassword('');
+        setNewAdminPassword('');
+        setConfirmAdminPassword('');
+        setShowAdminPassword(false);
+        setShowCurrentAdminPassword(false);
+        setShowConfirmAdminPassword(false);
+
+        setData((prev: typeof INITIAL_DATA) => ({
+          ...prev,
+          settings: {
+            ...prev.settings,
+            adminPassword: ''
+          }
+        }));
+
+        triggerToast('Password admin berhasil diubah.');
+      })
+      .catch((error: any) => {
+        triggerToast(
+          error.message || 'Gagal mengubah password admin.'
+        );
+      })
+      .finally(() => {
+        setPasswordSaving(false);
       });
   };
 
@@ -2588,17 +2672,17 @@ Catatan: ${orderForm.catatan || '-'}`;
               </button>
             </form>
 
-            {/* Quick Demo Fill */}
+            {/* Quick Username Fill */}
             <div className="mt-6 pt-5 border-t border-[#E8E1D9] text-center">
               <button
                 type="button"
                 onClick={() => {
                   setLoginUser(data.settings.adminUsername || 'admin');
-                  setLoginPass(data.settings.adminPassword || 'admin123');
+                  setLoginPass('');
                 }}
                 className="text-xs text-[#8C6D46] hover:underline font-semibold"
               >
-                Isi Otomatis Akun Admin ({data.settings.adminUsername || 'admin'} / {data.settings.adminPassword ? '••••••••' : 'admin123'})
+                Isi Username Admin
               </button>
             </div>
 
@@ -3615,62 +3699,156 @@ Catatan: ${orderForm.catatan || '-'}`;
               <div className="space-y-6">
                 
                 {/* 1. Keamanan & Akun Admin */}
-                <div className="bg-white p-6 rounded-2xl border border-[#E8E1D9] shadow-sm space-y-4">
-                  <div className="flex items-center justify-between border-b border-[#E8E1D9] pb-4">
-                    <div>
-                      <h2 className="text-xl font-serif-luxury font-bold text-[#2D2723] flex items-center gap-2">
-                        <Lock className="w-5 h-5 text-[#8C6D46]" /> Keamanan Akun Admin
-                      </h2>
-                      <p className="text-xs text-[#766E65] mt-1">
-                        Atur username dan password untuk login ke Dashboard Admin CMS NGULEMIN.
-                      </p>
+                <div className="space-y-4">
+                  {/* Username Card */}
+                  <div className="bg-white p-6 rounded-2xl border border-[#E8E1D9] shadow-sm space-y-4">
+                    <div className="flex items-center justify-between border-b border-[#E8E1D9] pb-4 gap-4">
+                      <div>
+                        <h2 className="text-xl font-serif-luxury font-bold text-[#2D2723] flex items-center gap-2">
+                          <User className="w-5 h-5 text-[#8C6D46]" /> Ubah Username Admin
+                        </h2>
+                        <p className="text-xs text-[#766E65] mt-1">
+                          Ubah username yang digunakan saat masuk ke Dashboard Admin CMS.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => { void saveAdminUsername(); }}
+                        disabled={usernameSaving}
+                        className="px-4 py-2 text-xs font-semibold text-white bg-[#8C6D46] hover:bg-[#735735] rounded-lg shadow-sm disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap"
+                      >
+                        {usernameSaving ? 'Menyimpan...' : 'Simpan Username'}
+                      </button>
                     </div>
-                    <button
-                      onClick={() => {void saveAdminUsername();}}
-                      className="px-4 py-2 text-xs font-semibold text-white bg-[#8C6D46] hover:bg-[#735735] rounded-lg shadow-sm"
-                    >
-                      Simpan Perubahan
-                    </button>
-                  </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
                     <div>
-                      <label className="block font-semibold text-[#2D2723] mb-1.5 flex items-center gap-1.5">
-                        <User className="w-4 h-4 text-[#8C6D46]" /> Username Admin
+                      <label className="block font-semibold text-[#2D2723] mb-1.5 text-xs">
+                        Username Baru
                       </label>
                       <input
                         type="text"
-                        value={data.settings.adminUsername || "admin"}
-                        onChange={(e) => setData({ ...data, settings: { ...data.settings, adminUsername: e.target.value } })}
+                        value={newAdminUsername}
+                        onChange={(e) => setNewAdminUsername(e.target.value)}
                         placeholder="Contoh: admin atau nama_anda"
-                        className="w-full p-2.5 bg-[#FAF8F5] border border-[#E8E1D9] rounded-lg focus:outline-none focus:border-[#8C6D46] focus:bg-white"
+                        autoComplete="username"
+                        className="w-full p-2.5 bg-[#FAF8F5] border border-[#E8E1D9] rounded-lg focus:outline-none focus:border-[#8C6D46] focus:bg-white text-sm"
                       />
-                      <p className="text-[11px] text-[#766E65] mt-1">Username yang dipakai saat masuk di halaman login.</p>
+                      <p className="text-[11px] text-[#766E65] mt-1">
+                        Username saat ini: <strong>{data.settings.adminUsername || 'admin'}</strong>
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Password Card */}
+                  <div className="bg-white p-6 rounded-2xl border border-[#E8E1D9] shadow-sm space-y-4">
+                    <div className="flex items-center justify-between border-b border-[#E8E1D9] pb-4 gap-4">
+                      <div>
+                        <h2 className="text-xl font-serif-luxury font-bold text-[#2D2723] flex items-center gap-2">
+                          <Key className="w-5 h-5 text-[#8C6D46]" /> Ubah Password Admin
+                        </h2>
+                        <p className="text-xs text-[#766E65] mt-1">
+                          Ganti password dengan memasukkan password saat ini dan password baru.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => { void saveAdminPassword(); }}
+                        disabled={passwordSaving}
+                        className="px-4 py-2 text-xs font-semibold text-white bg-[#8C6D46] hover:bg-[#735735] rounded-lg shadow-sm disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap"
+                      >
+                        {passwordSaving ? 'Memproses...' : 'Ubah Password'}
+                      </button>
                     </div>
 
-                    <div>
-                      <label className="block font-semibold text-[#2D2723] mb-1.5 flex items-center gap-1.5">
-                        <Key className="w-4 h-4 text-[#8C6D46]" /> Password Admin Baru
-                      </label>
-                      <div className="relative">
-                        <input
-                          type={showAdminPassword ? "text" : "password"}
-                          value={data.settings.adminPassword || "admin123"}
-                          onChange={(e) => setData({ ...data, settings: { ...data.settings, adminPassword: e.target.value } })}
-                          placeholder="Password baru..."
-                          className="w-full p-2.5 pr-10 bg-[#FAF8F5] border border-[#E8E1D9] rounded-lg focus:outline-none focus:border-[#8C6D46] focus:bg-white"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowAdminPassword(!showAdminPassword)}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-[#766E65] hover:text-[#2D2723]"
-                          title={showAdminPassword ? "Sembunyikan password" : "Lihat password"}
-                        >
-                          {showAdminPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                        </button>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+                      <div>
+                        <label className="block font-semibold text-[#2D2723] mb-1.5">
+                          Password Saat Ini
+                        </label>
+                        <div className="relative">
+                          <input
+                            type={showCurrentAdminPassword ? "text" : "password"}
+                            value={currentAdminPassword}
+                            onChange={(e) => setCurrentAdminPassword(e.target.value)}
+                            placeholder="Masukkan password lama"
+                            autoComplete="current-password"
+                            className="w-full p-2.5 pr-10 bg-[#FAF8F5] border border-[#E8E1D9] rounded-lg focus:outline-none focus:border-[#8C6D46] focus:bg-white"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowCurrentAdminPassword(!showCurrentAdminPassword)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-[#766E65] hover:text-[#2D2723]"
+                            title={showCurrentAdminPassword ? "Sembunyikan password" : "Lihat password"}
+                          >
+                            {showCurrentAdminPassword ? (
+                              <EyeOff className="w-4 h-4" />
+                            ) : (
+                              <Eye className="w-4 h-4" />
+                            )}
+                          </button>
+                        </div>
                       </div>
-                      <p className="text-[11px] text-[#766E65] mt-1">Pastikan password mudah Anda ingat atau simpan dengan aman.</p>
+
+                      <div>
+                        <label className="block font-semibold text-[#2D2723] mb-1.5">
+                          Password Baru
+                        </label>
+                        <div className="relative">
+                          <input
+                            type={showAdminPassword ? "text" : "password"}
+                            value={newAdminPassword}
+                            onChange={(e) => setNewAdminPassword(e.target.value)}
+                            placeholder="Minimal 6 karakter"
+                            autoComplete="new-password"
+                            className="w-full p-2.5 pr-10 bg-[#FAF8F5] border border-[#E8E1D9] rounded-lg focus:outline-none focus:border-[#8C6D46] focus:bg-white"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowAdminPassword(!showAdminPassword)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-[#766E65] hover:text-[#2D2723]"
+                            title={showAdminPassword ? "Sembunyikan password" : "Lihat password"}
+                          >
+                            {showAdminPassword ? (
+                              <EyeOff className="w-4 h-4" />
+                            ) : (
+                              <Eye className="w-4 h-4" />
+                            )}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block font-semibold text-[#2D2723] mb-1.5">
+                          Konfirmasi Password Baru
+                        </label>
+                        <div className="relative">
+                          <input
+                            type={showConfirmAdminPassword ? "text" : "password"}
+                            value={confirmAdminPassword}
+                            onChange={(e) => setConfirmAdminPassword(e.target.value)}
+                            placeholder="Ulangi password baru"
+                            autoComplete="new-password"
+                            className="w-full p-2.5 pr-10 bg-[#FAF8F5] border border-[#E8E1D9] rounded-lg focus:outline-none focus:border-[#8C6D46] focus:bg-white"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowConfirmAdminPassword(!showConfirmAdminPassword)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-[#766E65] hover:text-[#2D2723]"
+                            title={showConfirmAdminPassword ? "Sembunyikan password" : "Lihat password"}
+                          >
+                            {showConfirmAdminPassword ? (
+                              <EyeOff className="w-4 h-4" />
+                            ) : (
+                              <Eye className="w-4 h-4" />
+                            )}
+                          </button>
+                        </div>
+                      </div>
                     </div>
+
+                    <p className="text-[11px] text-[#766E65] bg-[#FAF8F5] border border-[#E8E1D9] rounded-lg px-3 py-2">
+                      Password tidak disimpan di browser maupun di Sheet Settings. Sistem hanya menyimpan hash password di akun Admin.
+                    </p>
                   </div>
                 </div>
 
