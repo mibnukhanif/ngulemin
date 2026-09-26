@@ -58,8 +58,6 @@ const INITIAL_DATA = {
     siteName: "NGULEMIN",
     tagline: "Undangan Digital Elegan untuk Momen Istimewa",
     logoUrl: "",
-    adminUsername: "admin",
-    adminPassword: "admin123",
     whatsappAdmin: "6281234567890",
     emailAdmin: "halo@ngulemin.id",
     instagramAdmin: "ngulemin.id",
@@ -592,7 +590,7 @@ export default function App() {
   const [showAdminPassword, setShowAdminPassword] = useState<boolean>(false);
   const [showCurrentAdminPassword, setShowCurrentAdminPassword] = useState<boolean>(false);
   const [showConfirmAdminPassword, setShowConfirmAdminPassword] = useState<boolean>(false);
-  const [newAdminUsername, setNewAdminUsername] = useState<string>(String(INITIAL_DATA.settings.adminUsername || 'admin'));
+  const [newAdminUsername, setNewAdminUsername] = useState<string>('');
   const [currentAdminPassword, setCurrentAdminPassword] = useState<string>('');
   const [newAdminPassword, setNewAdminPassword] = useState<string>('');
   const [confirmAdminPassword, setConfirmAdminPassword] = useState<string>('');
@@ -719,7 +717,6 @@ export default function App() {
         ...data,
         settings: {
           ...data.settings,
-          adminPassword: ''
         }
       };
 
@@ -1446,8 +1443,8 @@ export default function App() {
 
   const saveSettings = () => {
     const {
-      adminPassword,
       adminUsername,
+      adminPassword,
       ...settingsToSave
     } = data.settings as any;
 
@@ -1466,7 +1463,7 @@ export default function App() {
   const saveAdminUsername = () => {
     const username = newAdminUsername.trim();
     const currentUsername = String(
-      data.settings.adminUsername || 'admin'
+      readAdminSession()?.username || ''
     ).trim();
 
     if (!username) {
@@ -1549,8 +1546,7 @@ export default function App() {
           ...prev,
           settings: {
             ...prev.settings,
-            adminPassword: ''
-          }
+            }
         }));
 
         triggerToast('Password admin berhasil diubah.');
@@ -1671,22 +1667,6 @@ Catatan: ${orderForm.catatan || '-'}`;
     const apiUrl = getConfiguredApiUrl();
     if (!apiUrl) {
       setLoginError('URL Google Apps Script belum dikonfigurasi.');
-      return;
-    }
-
-    const cached = readAdminSession();
-    const enteredUser = loginUser.trim().toLowerCase();
-
-    if (
-      cached?.token &&
-      cached?.username &&
-      cached.username.toLowerCase() === enteredUser
-    ) {
-      setAdminToken(cached.token);
-      setCurrentView('dashboard');
-      setLoginLoading(false);
-      triggerToast('Sesi admin dipulihkan.');
-      void validateCachedSession(cached.token);
       return;
     }
 
@@ -2645,7 +2625,7 @@ Catatan: ${orderForm.catatan || '-'}`;
                   type="text"
                   value={loginUser}
                   onChange={(e) => setLoginUser(e.target.value)}
-                  placeholder="admin"
+                  placeholder="Masukkan username admin"
                   required
                   className="w-full px-3.5 py-2.5 text-sm bg-[#FAF8F5] border border-[#E8E1D9] rounded-lg focus:outline-none focus:border-[#8C6D46] focus:bg-white"
                 />
@@ -2671,20 +2651,6 @@ Catatan: ${orderForm.catatan || '-'}`;
                 {loginLoading ? "Memverifikasi..." : "Masuk ke Dashboard"}
               </button>
             </form>
-
-            {/* Quick Username Fill */}
-            <div className="mt-6 pt-5 border-t border-[#E8E1D9] text-center">
-              <button
-                type="button"
-                onClick={() => {
-                  setLoginUser(data.settings.adminUsername || 'admin');
-                  setLoginPass('');
-                }}
-                className="text-xs text-[#8C6D46] hover:underline font-semibold"
-              >
-                Isi Username Admin
-              </button>
-            </div>
 
             <div className="mt-4 text-center">
               <button
@@ -3734,7 +3700,7 @@ Catatan: ${orderForm.catatan || '-'}`;
                         className="w-full p-2.5 bg-[#FAF8F5] border border-[#E8E1D9] rounded-lg focus:outline-none focus:border-[#8C6D46] focus:bg-white text-sm"
                       />
                       <p className="text-[11px] text-[#766E65] mt-1">
-                        Username saat ini: <strong>{data.settings.adminUsername || 'admin'}</strong>
+                        Masukkan username baru yang akan digunakan untuk login berikutnya.
                       </p>
                     </div>
                   </div>
