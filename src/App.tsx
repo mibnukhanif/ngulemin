@@ -340,7 +340,6 @@ const clearAdminSession = () => {
   localStorage.removeItem(ADMIN_SESSION_KEY);
   localStorage.removeItem(LEGACY_ADMIN_TOKEN_KEY);
   localStorage.removeItem(LEGACY_ADMIN_USER_KEY);
-  localStorage.removeItem(LAST_VIEW_KEY);
 };
 const cleanApiUrlValue = (value: any) => {
   const text = (value || "").toString().trim();
