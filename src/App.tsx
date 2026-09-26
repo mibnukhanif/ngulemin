@@ -291,7 +291,128 @@ const formatRupiah = (num: number) => {
     minimumFractionDigits: 0
   }).format(num || 0);
 };
+const getConfiguredApiUrl = () => {
+  return (
+    ((import.meta as any).env?.VITE_API_URL as string) ||
+    ((window as any).CONFIG?.API_URL as string) ||
+    ""
+  ).trim();
+};
 
+const cleanApiUrlValue = (value: any) => {
+  const text = (value || "").toString().trim();
+
+  const markdownMatch = text.match(/^\[.*\]\((.*)\)$/);
+
+  return markdownMatch ? markdownMatch[1] : text;
+};
+
+const normalizeApiData = (apiData: any, currentData: any) => {
+  const currentThemes = currentData.themes || [];
+  const currentTestimonials = currentData.testimonials || [];
+
+  const themeMap: Record<string, any> = {};
+  currentThemes.forEach((theme: any) => {
+    themeMap[theme.ID] = theme;
+  });
+
+  const testiMap: Record<string, any> = {};
+  currentTestimonials.forEach((testi: any) => {
+    testiMap[testi.id] = testi;
+  });
+
+  return {
+    ...currentData,
+
+    settings: {
+      ...currentData.settings,
+      ...(apiData.settings || {}),
+      apiUrl: (
+        apiData.settings?.apiUrl ||
+        currentData.settings?.apiUrl ||
+        getConfiguredApiUrl()
+      ).toString().trim()
+    },
+
+    home: {
+      ...currentData.home,
+      ...(apiData.home || {})
+    },
+
+    themes: Array.isArray(apiData.themes)
+      ? apiData.themes.map((theme: any) => {
+          const old = themeMap[theme.ID] || {};
+
+          return {
+            ...old,
+            ...theme,
+            PreviewURL: cleanApiUrlValue(
+              theme.PreviewURL || old.PreviewURL
+            ),
+            Category:
+              theme.Category ||
+              old.Category ||
+              ""
+          };
+        })
+      : currentData.themes,
+
+    pricing: Array.isArray(apiData.pricing)
+      ? apiData.pricing
+      : currentData.pricing,
+
+    features: Array.isArray(apiData.features)
+      ? apiData.features.map((feature: any) => ({
+          id: feature.ID ?? feature.id ?? "",
+          icon: feature.Icon ?? feature.icon ?? "Sparkles",
+          title: feature.Judul ?? feature.title ?? "",
+          desc: feature.Deskripsi ?? feature.desc ?? "",
+          status: feature.Status ?? feature.status ?? "Aktif"
+        }))
+      : currentData.features,
+
+    testimonials: Array.isArray(apiData.testimonials)
+      ? apiData.testimonials.map((testi: any) => {
+          const id = testi.ID ?? testi.id ?? "";
+          const old = testiMap[id] || {};
+
+          return {
+            ...old,
+            id,
+            name: testi.Nama ?? testi.name ?? "",
+            photo: testi.Foto ?? testi.photo ?? "",
+            testi: testi.Testimoni ?? testi.testi ?? "",
+            rating: Number(testi.Rating ?? testi.rating ?? 5),
+            location:
+              testi.Lokasi ??
+              testi.location ??
+              old.location ??
+              "Indonesia",
+            status: testi.Status ?? testi.status ?? "Aktif"
+          };
+        })
+      : currentData.testimonials,
+
+    howToOrder: Array.isArray(apiData.howToOrder)
+      ? apiData.howToOrder.map((step: any) => ({
+          num: step.Nomor ?? step.num ?? "",
+          title: step.Judul ?? step.title ?? "",
+          desc: step.Deskripsi ?? step.desc ?? "",
+          icon: step.Icon ?? step.icon ?? "FileText",
+          status: step.Status ?? step.status ?? "Aktif"
+        }))
+      : currentData.howToOrder,
+
+    faq: Array.isArray(apiData.faq)
+      ? apiData.faq.map((item: any) => ({
+          id: item.ID ?? item.id ?? "",
+          question: item.Pertanyaan ?? item.question ?? "",
+          answer: item.Jawaban ?? item.answer ?? "",
+          status: item.Status ?? item.status ?? "Aktif"
+        }))
+      : currentData.faq
+  };
+};
 export default function App() {
   // Navigation View State: 'public' | 'login' | 'dashboard' | 'guide'
   const [currentView, setCurrentView] = useState<'public' | 'login' | 'dashboard' | 'guide'>('public');
@@ -467,7 +588,591 @@ export default function App() {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3500);
   };
+  const callApi = async (
+  action: string,
+  payload: Record<string, any> = {},
+  requireAuth: boolean = true
+) => {
+  const apiUrl = (
+    data.settings.apiUrl ||
+    getConfiguredApiUrl()
+  ).trim();
 
+  if (!apiUrl) {
+    throw new Error(
+      "URL Google Apps Script belum dikonfigurasi."
+    );
+  }
+
+  if (requireAuth && !adminToken) {
+    throw new Error(
+      "Sesi admin tidak tersedia. Silakan login kembali."
+    );
+  }
+
+  const body: Record<string, any> = {
+    action,
+    ...payload
+  };
+
+  if (requireAuth) {
+    body.token = adminToken;
+  }
+
+  const response = await fetch(apiUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "text/plain;charset=utf-8"
+    },
+    body: JSON.stringify(body)
+  });
+
+  const result = await response.json();
+
+  if (!result.success) {
+    throw new Error(
+      result.message || "Operasi API gagal."
+    );
+  }
+
+  return result;
+};
+
+const deleteEntity = (
+  action: string,
+  id: string,
+  onSuccess: () => void,
+  successMessage: string
+) => {
+  void (async () => {
+    try {
+      await callApi(action, { id });
+      onSuccess();
+      triggerToast(successMessage);
+    } catch (error: any) {
+      console.error(action, error);
+      triggerToast(
+        error.message || "Gagal menghapus data."
+      );
+    }
+  })();
+};
+
+useEffect(() => {
+  let cancelled = false;
+
+  const loadBackendData = async () => {
+    const apiUrl = getConfiguredApiUrl();
+
+    if (!apiUrl) return;
+
+    try {
+      const response = await fetch(
+        `${apiUrl}?action=getAllData`
+      );
+
+      const result = await response.json();
+
+      if (
+        !cancelled &&
+        result.success &&
+        result.data
+      ) {
+        setData((prev: typeof INITIAL_DATA) =>
+          normalizeApiData(result.data, prev)
+        );
+      }
+    } catch (error) {
+      console.warn(
+        "Gagal memuat data Google Spreadsheet:",
+        error
+      );
+    }
+  };
+
+  loadBackendData();
+
+  return () => {
+    cancelled = true;
+  };
+}, []);
+
+useEffect(() => {
+  if (!adminToken) return;
+
+  let cancelled = false;
+
+  const loadOrders = async () => {
+    try {
+      const result = await callApi(
+        "getOrders",
+        {},
+        true
+      );
+
+      if (!cancelled && result.success) {
+        const orders = Array.isArray(result.data)
+          ? result.data.map((ord: any) => ({
+              id: ord.ID ?? ord.id ?? "",
+              date: ord.Tanggal ?? ord.date ?? "",
+              customerName:
+                ord.Nama ??
+                ord.customerName ??
+                "",
+              whatsapp:
+                ord.WhatsApp ??
+                ord.whatsapp ??
+                "",
+              theme:
+                ord.Tema ??
+                ord.theme ??
+                "",
+              groom:
+                ord.MempelaiPria ??
+                ord.groom ??
+                "",
+              bride:
+                ord.MempelaiWanita ??
+                ord.bride ??
+                "",
+              weddingDate:
+                ord.TanggalNikah ??
+                ord.weddingDate ??
+                "",
+              location:
+                ord.Lokasi ??
+                ord.location ??
+                "",
+              package:
+                ord.Paket ??
+                ord.package ??
+                "",
+              notes:
+                ord.Catatan ??
+                ord.notes ??
+                "",
+              status:
+                ord.Status ??
+                ord.status ??
+                "Baru"
+            }))
+          : [];
+
+        setData((prev: typeof INITIAL_DATA) => ({
+          ...prev,
+          orders
+        }));
+      }
+    } catch (error) {
+      console.warn(
+        "Gagal memuat Orders dari Spreadsheet:",
+        error
+      );
+    }
+  };
+
+  loadOrders();
+
+  return () => {
+    cancelled = true;
+  };
+}, [adminToken]);
+
+const updateOrderStatus = (
+  orderId: string,
+  newStatus: string
+) => {
+  void (async () => {
+    try {
+      await callApi("updateOrderStatus", {
+        id: orderId,
+        status: newStatus
+      });
+
+      setData((prev: typeof INITIAL_DATA) => ({
+        ...prev,
+        orders: prev.orders.map((order: any) =>
+          order.id === orderId
+            ? { ...order, status: newStatus }
+            : order
+        )
+      }));
+
+      triggerToast(
+        `Status pesanan ${orderId} diubah ke ${newStatus}`
+      );
+    } catch (error: any) {
+      console.error(
+        "Update Order Status Error:",
+        error
+      );
+
+      triggerToast(
+        error.message ||
+        "Gagal memperbarui status pesanan."
+      );
+    }
+  })();
+};
+
+const savePricing = async () => {
+  const d = pricingModal.data;
+
+  if (!d.Nama.trim()) {
+    triggerToast("Nama paket tidak boleh kosong");
+    return;
+  }
+
+  const finalPkg = {
+    ID: d.ID,
+    Nama: d.Nama,
+    Harga: Number(d.Harga),
+    Deskripsi: d.Deskripsi,
+    Fitur: d.FiturText
+      .split("\n")
+      .map((s) => s.trim())
+      .filter(Boolean),
+    Label: d.Label,
+    Featured: d.Featured,
+    Status: d.Status,
+    Urutan: 1
+  };
+
+  try {
+    await callApi(
+      pricingModal.isEdit
+        ? "updatePricing"
+        : "createPricing",
+      { data: finalPkg }
+    );
+
+    setData((prev: typeof INITIAL_DATA) => ({
+      ...prev,
+      pricing: pricingModal.isEdit
+        ? prev.pricing.map((item: any) =>
+            item.ID === d.ID ? finalPkg : item
+          )
+        : [...prev.pricing, finalPkg]
+    }));
+
+    setPricingModal((prev) => ({
+      ...prev,
+      open: false
+    }));
+
+    triggerToast(
+      pricingModal.isEdit
+        ? "Paket berhasil diperbarui di Spreadsheet!"
+        : "Paket berhasil ditambahkan ke Spreadsheet!"
+    );
+  } catch (error: any) {
+    console.error("Pricing API Error:", error);
+    triggerToast(
+      error.message ||
+      "Gagal menyimpan paket ke Spreadsheet."
+    );
+  }
+};
+
+const saveFeature = async () => {
+  const d = featureModal.data;
+
+  if (!d.title.trim()) {
+    triggerToast("Judul fitur tidak boleh kosong");
+    return;
+  }
+
+  const apiFeature = {
+    ID: d.id,
+    Icon: d.icon,
+    Judul: d.title,
+    Deskripsi: d.desc,
+    Status: d.status,
+    Urutan: 1
+  };
+
+  try {
+    await callApi(
+      featureModal.isEdit
+        ? "updateFeature"
+        : "createFeature",
+      { data: apiFeature }
+    );
+
+    setData((prev: typeof INITIAL_DATA) => ({
+      ...prev,
+      features: featureModal.isEdit
+        ? prev.features.map((item: any) =>
+            item.id === d.id ? d : item
+          )
+        : [...prev.features, d]
+    }));
+
+    setFeatureModal((prev) => ({
+      ...prev,
+      open: false
+    }));
+
+    triggerToast(
+      featureModal.isEdit
+        ? "Fitur berhasil diperbarui di Spreadsheet!"
+        : "Fitur berhasil ditambahkan ke Spreadsheet!"
+    );
+  } catch (error: any) {
+    console.error("Feature API Error:", error);
+    triggerToast(
+      error.message ||
+      "Gagal menyimpan fitur."
+    );
+  }
+};
+
+const saveTestimonial = async () => {
+  const d = testiModal.data;
+
+  if (!d.name.trim() || !d.testi.trim()) {
+    triggerToast(
+      "Nama dan isi ulasan wajib diisi"
+    );
+    return;
+  }
+
+  const apiTestimonial = {
+    ID: d.id,
+    Nama: d.name,
+    Foto: d.photo,
+    Testimoni: d.testi,
+    Rating: Number(d.rating),
+    Lokasi: d.location,
+    Status: d.status,
+    Urutan: 1
+  };
+
+  try {
+    await callApi(
+      testiModal.isEdit
+        ? "updateTestimonial"
+        : "createTestimonial",
+      { data: apiTestimonial }
+    );
+
+    setData((prev: typeof INITIAL_DATA) => ({
+      ...prev,
+      testimonials: testiModal.isEdit
+        ? prev.testimonials.map((item: any) =>
+            item.id === d.id ? d : item
+          )
+        : [...prev.testimonials, d]
+    }));
+
+    setTestiModal((prev) => ({
+      ...prev,
+      open: false
+    }));
+
+    triggerToast(
+      testiModal.isEdit
+        ? "Testimoni berhasil diperbarui di Spreadsheet!"
+        : "Testimoni berhasil ditambahkan ke Spreadsheet!"
+    );
+  } catch (error: any) {
+    console.error("Testimonial API Error:", error);
+    triggerToast(
+      error.message ||
+      "Gagal menyimpan testimoni."
+    );
+  }
+};
+
+const saveFaq = async () => {
+  const d = faqModal.data;
+
+  if (!d.question.trim() || !d.answer.trim()) {
+    triggerToast(
+      "Pertanyaan dan jawaban wajib diisi"
+    );
+    return;
+  }
+
+  const apiFaq = {
+    ID: d.id,
+    Pertanyaan: d.question,
+    Jawaban: d.answer,
+    Status: "Aktif",
+    Urutan: 1
+  };
+
+  try {
+    await callApi(
+      faqModal.isEdit
+        ? "updateFAQ"
+        : "createFAQ",
+      { data: apiFaq }
+    );
+
+    setData((prev: typeof INITIAL_DATA) => ({
+      ...prev,
+      faq: faqModal.isEdit
+        ? prev.faq.map((item: any) =>
+            item.id === d.id
+              ? {
+                  ...d,
+                  status: "Aktif"
+                }
+              : item
+          )
+        : [
+            ...prev.faq,
+            {
+              ...d,
+              status: "Aktif"
+            }
+          ]
+    }));
+
+    setFaqModal((prev) => ({
+      ...prev,
+      open: false
+    }));
+
+    triggerToast(
+      faqModal.isEdit
+        ? "FAQ berhasil diperbarui di Spreadsheet!"
+        : "FAQ berhasil ditambahkan ke Spreadsheet!"
+    );
+  } catch (error: any) {
+    console.error("FAQ API Error:", error);
+    triggerToast(
+      error.message ||
+      "Gagal menyimpan FAQ."
+    );
+  }
+};
+
+const saveHowToOrder = async () => {
+  const rows = data.howToOrder.map(
+    (step: any, index: number) => ({
+      Nomor:
+        step.num ||
+        String(index + 1).padStart(2, "0"),
+      Judul: step.title,
+      Deskripsi: step.desc,
+      Icon: step.icon || "FileText",
+      Status: step.status || "Aktif",
+      Urutan: index + 1
+    })
+  );
+
+  try {
+    for (const row of rows) {
+      await callApi(
+        "updateHowToOrder",
+        { data: row }
+      );
+    }
+
+    triggerToast(
+      "Cara Pesan berhasil disimpan ke Spreadsheet!"
+    );
+  } catch (error: any) {
+    console.error(
+      "HowToOrder API Error:",
+      error
+    );
+
+    triggerToast(
+      error.message ||
+      "Gagal menyimpan Cara Pesan."
+    );
+  }
+};
+
+const saveHome = async () => {
+  try {
+    await callApi("updateHome", {
+      data: data.home
+    });
+
+    triggerToast(
+      "Home & Hero berhasil disimpan ke Spreadsheet!"
+    );
+  } catch (error: any) {
+    console.error("Home API Error:", error);
+
+    triggerToast(
+      error.message ||
+      "Gagal menyimpan Home."
+    );
+  }
+};
+
+const saveSettings = async () => {
+  try {
+    const {
+      adminPassword,
+      ...settingsToSave
+    } = data.settings as any;
+
+    await callApi("updateSettings", {
+      data: settingsToSave
+    });
+
+    triggerToast(
+      "Pengaturan berhasil disimpan ke Spreadsheet!"
+    );
+  } catch (error: any) {
+    console.error(
+      "Settings API Error:",
+      error
+    );
+
+    triggerToast(
+      error.message ||
+      "Gagal menyimpan pengaturan."
+    );
+  }
+};
+
+const saveAdminUsername = async () => {
+  const username = (
+    data.settings.adminUsername || ""
+  ).trim();
+
+  if (!username) {
+    triggerToast(
+      "Username admin tidak boleh kosong."
+    );
+    return;
+  }
+
+  try {
+    await callApi("updateAdminUsername", {
+      username
+    });
+
+    setData((prev: typeof INITIAL_DATA) => ({
+      ...prev,
+      settings: {
+        ...prev.settings,
+        adminUsername: username
+      }
+    }));
+
+    triggerToast(
+      "Username admin berhasil diperbarui."
+    );
+  } catch (error: any) {
+    console.error(
+      "Admin Username API Error:",
+      error
+    );
+
+    triggerToast(
+      error.message ||
+      "Gagal memperbarui username admin."
+    );
+  }
+};
   // Handle Order Submit
   const handleOrderSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
