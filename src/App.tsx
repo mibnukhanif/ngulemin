@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Sparkles,
   Smartphone,
@@ -302,6 +302,46 @@ const getConfiguredApiUrl = () => {
   ).trim();
 };
 
+
+const APP_DATA_CACHE_KEY = 'ngulemin_site_data';
+const APP_CACHE_TIME_KEY = 'ngulemin_site_data_cached_at';
+const ADMIN_SESSION_KEY = 'ngulemin_admin_session';
+const LEGACY_ADMIN_TOKEN_KEY = 'ngulemin_admin_token';
+const LEGACY_ADMIN_USER_KEY = 'ngulemin_admin_user';
+const API_TIMEOUT_MS = 12000;
+
+const readAdminSession = () => {
+  try {
+    const raw = localStorage.getItem(ADMIN_SESSION_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed?.token || !parsed?.expiresAt) return null;
+    if (Number(parsed.expiresAt) <= Date.now()) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+};
+
+const storeAdminSession = (token: string, username: string, expires: string) => {
+  const expiresAt = Date.parse(expires);
+  const session = {
+    token,
+    username,
+    expiresAt: Number.isFinite(expiresAt) ? expiresAt : Date.now() + 24 * 60 * 60 * 1000
+  };
+  localStorage.setItem(ADMIN_SESSION_KEY, JSON.stringify(session));
+  localStorage.setItem(LEGACY_ADMIN_TOKEN_KEY, token);
+  localStorage.setItem(LEGACY_ADMIN_USER_KEY, username);
+  return session;
+};
+
+const clearAdminSession = () => {
+  localStorage.removeItem(ADMIN_SESSION_KEY);
+  localStorage.removeItem(LEGACY_ADMIN_TOKEN_KEY);
+  localStorage.removeItem(LEGACY_ADMIN_USER_KEY);
+  localStorage.removeItem(LAST_VIEW_KEY);
+};
 const cleanApiUrlValue = (value: any) => {
   const text = (value || "").toString().trim();
 
@@ -500,30 +540,30 @@ export default function App() {
   // Mobile Nav Drawer
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  // App Data (Loaded from LocalStorage or Default)
+  // App Data: tampilkan cache lokal dulu, refresh dari Spreadsheet di background.
   const [data, setData] = useState(() => {
-    const envApi =
-  ((import.meta as any).env?.VITE_API_URL as string) ||
-  ((window as any).CONFIG?.API_URL as string) ||
-  "";
-    const saved = localStorage.getItem('ngulemin_site_data');
+    const envApi = getConfiguredApiUrl();
+    const saved = localStorage.getItem(APP_DATA_CACHE_KEY);
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if ((!parsed.settings?.apiUrl || parsed.settings.apiUrl.trim() === '') && envApi) {
-          if (!parsed.settings) parsed.settings = { ...INITIAL_DATA.settings };
-          parsed.settings.apiUrl = envApi;
-        }
-        return parsed;
-      } catch (e) {
-        return INITIAL_DATA;
+        const normalized = normalizeApiData(parsed, INITIAL_DATA);
+        normalized.settings.apiUrl = String(
+          normalized.settings?.apiUrl || envApi
+        ).trim();
+        return normalized;
+      } catch {
+        return { ...INITIAL_DATA };
       }
     }
-    return INITIAL_DATA;
+    return { ...INITIAL_DATA };
   });
 
+  const lastServerDataRef = useRef<any>(data);
+  const persistTimerRef = useRef<number | null>(null);
+
   // Auth State
-  const [adminToken, setAdminToken] = useState<string | null>(() => localStorage.getItem('ngulemin_admin_token'));
+  const [adminToken, setAdminToken] = useState<string | null>(() => readAdminSession()?.token || null);
   const [loginUser, setLoginUser] = useState('');
   const [loginPass, setLoginPass] = useState('');
   const [loginError, setLoginError] = useState('');
@@ -544,6 +584,8 @@ export default function App() {
   });
   const [orderSubmittedSuccess, setOrderSubmittedSuccess] = useState(false);
   const [lastGeneratedWaUrl, setLastGeneratedWaUrl] = useState('');
+  const [orderSaveStatus, setOrderSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [orderSaveMessage, setOrderSaveMessage] = useState('');
 
   // Category Sort & Form State
   const [selectedCategory, setSelectedCategory] = useState<string>('Semua');
@@ -659,623 +701,797 @@ export default function App() {
   // Copy Status
   const [codeCopied, setCodeCopied] = useState(false);
 
-  // Save changes to localStorage
+  // Persist cache secara debounce dan tanpa menyimpan password plaintext.
   useEffect(() => {
-    localStorage.setItem('ngulemin_site_data', JSON.stringify(data));
+    if (persistTimerRef.current !== null) {
+      window.clearTimeout(persistTimerRef.current);
+    }
+
+    persistTimerRef.current = window.setTimeout(() => {
+      const safeData = {
+        ...data,
+        settings: {
+          ...data.settings,
+          adminPassword: ''
+        }
+      };
+
+      try {
+        localStorage.setItem(APP_DATA_CACHE_KEY, JSON.stringify(safeData));
+        localStorage.setItem(APP_CACHE_TIME_KEY, String(Date.now()));
+      } catch (error) {
+        console.warn('Local cache warning:', error);
+      }
+    }, 250);
+
+    return () => {
+      if (persistTimerRef.current !== null) {
+        window.clearTimeout(persistTimerRef.current);
+      }
+    };
   }, [data]);
 
   const triggerToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3500);
   };
+
   const callApi = async (
-  action: string,
-  payload: Record<string, any> = {},
-  requireAuth: boolean = true
-) => {
-  const apiUrl = (
-    data.settings.apiUrl ||
-    getConfiguredApiUrl()
-  ).trim();
-
-  if (!apiUrl) {
-    throw new Error(
-      "URL Google Apps Script belum dikonfigurasi."
-    );
-  }
-
-  if (requireAuth && !adminToken) {
-    throw new Error(
-      "Sesi admin tidak tersedia. Silakan login kembali."
-    );
-  }
-
-  const body: Record<string, any> = {
-    action,
-    ...payload
-  };
-
-  if (requireAuth) {
-    body.token = adminToken;
-  }
-
-  const response = await fetch(apiUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "text/plain;charset=utf-8"
-    },
-    body: JSON.stringify(body)
-  });
-
-  const result = await response.json();
-
-  if (!result.success) {
-    throw new Error(
-      result.message || "Operasi API gagal."
-    );
-  }
-
-  return result;
-};
-
-const deleteEntity = (
-  action: string,
-  id: string,
-  onSuccess: () => void,
-  successMessage: string
-) => {
-  void (async () => {
-    try {
-      await callApi(action, { id });
-      onSuccess();
-      triggerToast(successMessage);
-    } catch (error: any) {
-      console.error(action, error);
-      triggerToast(
-        error.message || "Gagal menghapus data."
-      );
-    }
-  })();
-};
-
-useEffect(() => {
-  let cancelled = false;
-
-  const loadBackendData = async () => {
-    const apiUrl = getConfiguredApiUrl();
-
-    if (!apiUrl) return;
-
-    try {
-      const response = await fetch(
-        `${apiUrl}?action=getAllData`
-      );
-
-      const result = await response.json();
-
-      if (
-        !cancelled &&
-        result.success &&
-        result.data
-      ) {
-        setData((prev: typeof INITIAL_DATA) =>
-          normalizeApiData(result.data, prev)
-        );
-      }
-    } catch (error) {
-      console.warn(
-        "Gagal memuat data Google Spreadsheet:",
-        error
-      );
-    }
-  };
-
-  loadBackendData();
-
-  return () => {
-    cancelled = true;
-  };
-}, []);
-
-useEffect(() => {
-  if (!adminToken) return;
-
-  let cancelled = false;
-
-  const loadOrders = async () => {
+    action: string,
+    payload: Record<string, any> = {},
+    requireAuth: boolean = true,
+    timeoutMs: number = API_TIMEOUT_MS
+  ) => {
     const apiUrl = (
       data.settings.apiUrl ||
       getConfiguredApiUrl()
     ).trim();
 
-    if (!apiUrl) return;
+    if (!apiUrl) {
+      throw new Error('URL Google Apps Script belum dikonfigurasi.');
+    }
+
+    if (requireAuth && !adminToken) {
+      throw new Error('Sesi admin tidak tersedia. Silakan login kembali.');
+    }
+
+    const body: Record<string, any> = {
+      action,
+      ...payload
+    };
+
+    if (requireAuth) {
+      body.token = adminToken;
+    }
+
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), timeoutMs);
 
     try {
-      const response = await fetch(
-        `${apiUrl}?action=getOrders&token=${encodeURIComponent(adminToken)}`
-      );
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'text/plain;charset=utf-8'
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+        cache: 'no-store'
+      });
 
       const result = await response.json();
 
-      if (!cancelled && result.success) {
-        const orders = Array.isArray(result.data)
-          ? result.data.map((ord: any) => ({
-              id: ord.ID ?? ord.id ?? "",
-              date: ord.Tanggal ?? ord.date ?? "",
-              customerName:
-                ord.Nama ??
-                ord.customerName ??
-                "",
-              whatsapp:
-                ord.WhatsApp ??
-                ord.whatsapp ??
-                "",
-              theme:
-                ord.Tema ??
-                ord.theme ??
-                "",
-              groom:
-                ord.MempelaiPria ??
-                ord.groom ??
-                "",
-              bride:
-                ord.MempelaiWanita ??
-                ord.bride ??
-                "",
-              weddingDate:
-                ord.TanggalNikah ??
-                ord.weddingDate ??
-                "",
-              location:
-                ord.Lokasi ??
-                ord.location ??
-                "",
-              package:
-                ord.Paket ??
-                ord.package ??
-                "",
-              notes:
-                ord.Catatan ??
-                ord.notes ??
-                "",
-              status:
-                ord.Status ??
-                ord.status ??
-                "Baru"
-            }))
-          : [];
-
-        setData((prev: typeof INITIAL_DATA) => ({
-          ...prev,
-          orders
-        }));
+      if (!response.ok || !result.success) {
+        throw new Error(
+          result.message || `Server mengembalikan HTTP ${response.status}.`
+        );
       }
-    } catch (error) {
-      console.warn(
-        "Gagal memuat Orders dari Spreadsheet:",
-        error
-      );
-    }
-  };
 
-  loadOrders();
-
-  return () => {
-    cancelled = true;
-  };
-}, [adminToken, data.settings.apiUrl]);
-
-const updateOrderStatus = (
-  orderId: string,
-  newStatus: string
-) => {
-  void (async () => {
-    try {
-      await callApi("updateOrderStatus", {
-        id: orderId,
-        status: newStatus
-      });
-
-      setData((prev: typeof INITIAL_DATA) => ({
-        ...prev,
-        orders: prev.orders.map((order: any) =>
-          order.id === orderId
-            ? { ...order, status: newStatus }
-            : order
-        )
-      }));
-
-      triggerToast(
-        `Status pesanan ${orderId} diubah ke ${newStatus}`
-      );
+      return result;
     } catch (error: any) {
-      console.error(
-        "Update Order Status Error:",
-        error
-      );
-
-      triggerToast(
-        error.message ||
-        "Gagal memperbarui status pesanan."
-      );
+      if (error?.name === 'AbortError') {
+        throw new Error('Server membutuhkan waktu terlalu lama untuk merespons.');
+      }
+      throw error;
+    } finally {
+      window.clearTimeout(timer);
     }
-  })();
-};
-
-const savePricing = async () => {
-  const d = pricingModal.data;
-
-  if (!d.Nama.trim()) {
-    triggerToast("Nama paket tidak boleh kosong");
-    return;
-  }
-
-  const finalPkg = {
-    ID: d.ID,
-    Nama: d.Nama,
-    Harga: Number(d.Harga),
-    Deskripsi: d.Deskripsi,
-    Fitur: d.FiturText
-      .split("\n")
-      .map((s) => s.trim())
-      .filter(Boolean),
-    Label: d.Label,
-    Featured: d.Featured,
-    Status: d.Status,
-    Urutan: 1
   };
 
-  const apiPkg = {
-    ...finalPkg,
-    Fitur: finalPkg.Fitur.join("\n"),
-    Featured: finalPkg.Featured ? "Ya" : "Tidak"
+  const refreshAllData = async (showError = false) => {
+    const apiUrl = getConfiguredApiUrl();
+    if (!apiUrl) return false;
+
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+
+    try {
+      const response = await fetch(
+        `${apiUrl}?action=getAllData&t=${Date.now()}`,
+        {
+          signal: controller.signal,
+          cache: 'no-store'
+        }
+      );
+      const result = await response.json();
+
+      if (!response.ok || !result.success || !result.data) {
+        throw new Error(result.message || 'Gagal memuat database.');
+      }
+
+      const normalized = normalizeApiData(
+        result.data,
+        lastServerDataRef.current || data
+      );
+
+      lastServerDataRef.current = normalized;
+      setData(normalized);
+      return true;
+    } catch (error: any) {
+      console.warn('Background data refresh failed:', error);
+      if (showError) {
+        triggerToast(
+          error.message || 'Gagal menyegarkan data dari Spreadsheet.'
+        );
+      }
+      return false;
+    } finally {
+      window.clearTimeout(timer);
+    }
   };
 
-  try {
-    await callApi(
-      pricingModal.isEdit
-        ? "updatePricing"
-        : "createPricing",
-      { data: apiPkg }
-    );
+  const validateCachedSession = async (token: string) => {
+    const apiUrl = getConfiguredApiUrl();
+    if (!apiUrl || !token) return true;
+
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), 7000);
+
+    try {
+      const response = await fetch(
+        `${apiUrl}?action=validateSession&token=${encodeURIComponent(token)}`,
+        {
+          signal: controller.signal,
+          cache: 'no-store'
+        }
+      );
+      const result = await response.json();
+
+      if (!result.success) {
+        clearAdminSession();
+        setAdminToken(null);
+        setCurrentView(prev => prev === 'dashboard' ? 'login' : prev);
+        return false;
+      }
+
+      return true;
+    } catch (error) {
+      // Jangan paksa logout hanya karena jaringan lambat/gagal.
+      // Session lokal tetap dipakai sampai masa berlaku lokal berakhir.
+      console.warn('Session background validation warning:', error);
+      return true;
+    } finally {
+      window.clearTimeout(timer);
+    }
+  };
+
+  // Tampilkan cache lokal segera, lalu sinkronkan data publik di background.
+  useEffect(() => {
+    void refreshAllData(false);
+  }, []);
+
+  // Validasi session tersimpan di background tanpa memblokir dashboard.
+  useEffect(() => {
+    const session = readAdminSession();
+    if (!session?.token) return;
+
+    void validateCachedSession(session.token);
+  }, []);
+
+  // Load Orders hanya ketika admin sudah masuk dashboard, sehingga website publik tidak ikut menunggu API admin.
+  useEffect(() => {
+    if (!adminToken || currentView !== 'dashboard') return;
+
+    let cancelled = false;
+
+    const loadOrders = async () => {
+      const apiUrl = getConfiguredApiUrl();
+      if (!apiUrl) return;
+
+      const controller = new AbortController();
+      const timer = window.setTimeout(() => controller.abort(), 8000);
+
+      try {
+        const response = await fetch(
+          `${apiUrl}?action=getOrders&token=${encodeURIComponent(adminToken)}&t=${Date.now()}`,
+          {
+            signal: controller.signal,
+            cache: 'no-store'
+          }
+        );
+        const result = await response.json();
+
+        if (!cancelled && result.success) {
+          const orders = Array.isArray(result.data)
+            ? result.data.map((ord: any) => ({
+                id: ord.ID ?? ord.id ?? '',
+                date: ord.Tanggal ?? ord.date ?? '',
+                customerName: ord.Nama ?? ord.customerName ?? '',
+                whatsapp: String(ord.WhatsApp ?? ord.whatsapp ?? ''),
+                theme: ord.Tema ?? ord.theme ?? '',
+                groom: ord.MempelaiPria ?? ord.groom ?? '',
+                bride: ord.MempelaiWanita ?? ord.bride ?? '',
+                weddingDate: ord.TanggalNikah ?? ord.weddingDate ?? '',
+                location: ord.Lokasi ?? ord.location ?? '',
+                package: ord.Paket ?? ord.package ?? '',
+                notes: ord.Catatan ?? ord.notes ?? '',
+                status: ord.Status ?? ord.status ?? 'Baru'
+              }))
+            : [];
+
+          setData((prev: typeof INITIAL_DATA) => ({
+            ...prev,
+            orders
+          }));
+        }
+      } catch (error) {
+        console.warn('Gagal memuat Orders dari Spreadsheet:', error);
+      } finally {
+        window.clearTimeout(timer);
+      }
+    };
+
+    void loadOrders();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [adminToken, currentView]);
+
+  const deleteEntity = (
+    action: string,
+    id: string,
+    onOptimistic: () => void,
+    successMessage: string
+  ) => {
+    onOptimistic();
+    triggerToast('Menghapus data...');
+
+    void callApi(action, { id })
+      .then(() => {
+        triggerToast(successMessage);
+      })
+      .catch((error: any) => {
+        console.error(action, error);
+        void refreshAllData(false);
+        triggerToast(
+          error.message || 'Gagal menghapus data dari Spreadsheet.'
+        );
+      });
+  };
+
+  const updateOrderStatus = (orderId: string, newStatus: string) => {
+    const previousStatus = data.orders.find(
+      (order: any) => order.id === orderId
+    )?.status || 'Baru';
 
     setData((prev: typeof INITIAL_DATA) => ({
       ...prev,
-      pricing: pricingModal.isEdit
+      orders: prev.orders.map((order: any) =>
+        order.id === orderId
+          ? { ...order, status: newStatus }
+          : order
+      )
+    }));
+
+    triggerToast('Status pesanan diperbarui...');
+
+    void callApi('updateOrderStatus', {
+      id: orderId,
+      status: newStatus
+    })
+      .then(() => {
+        triggerToast(`Status pesanan ${orderId} berhasil disimpan.`);
+      })
+      .catch((error: any) => {
+        setData((prev: typeof INITIAL_DATA) => ({
+          ...prev,
+          orders: prev.orders.map((order: any) =>
+            order.id === orderId
+              ? { ...order, status: previousStatus }
+              : order
+          )
+        }));
+        triggerToast(
+          error.message || 'Gagal memperbarui status pesanan.'
+        );
+      });
+  };
+
+  const saveTheme = () => {
+    const d = { ...themeModal.data };
+
+    if (!d.Nama.trim()) {
+      triggerToast('Nama tema tidak boleh kosong');
+      return;
+    }
+
+    const isEdit = themeModal.isEdit;
+    const original = data.themes.find(
+      (item: any) => item.ID === d.ID
+    );
+    const optimisticId = isEdit
+      ? d.ID
+      : `LOCAL-THM-${Date.now()}`;
+    const optimistic = {
+      ...d,
+      ID: optimisticId
+    };
+
+    setThemeModal(prev => ({ ...prev, open: false }));
+    setData((prev: typeof INITIAL_DATA) => ({
+      ...prev,
+      themes: isEdit
+        ? prev.themes.map((item: any) =>
+            item.ID === d.ID ? optimistic : item
+          )
+        : [...prev.themes, optimistic]
+    }));
+
+    triggerToast(isEdit ? 'Perubahan tema diterapkan...' : 'Tema ditambahkan...');
+
+    void callApi(
+      isEdit ? 'updateTheme' : 'createTheme',
+      { data: { ...d, ID: isEdit ? d.ID : '' } }
+    )
+      .then((result: any) => {
+        if (!isEdit) {
+          const serverTheme = result.data || d;
+          setData((prev: typeof INITIAL_DATA) => ({
+            ...prev,
+            themes: prev.themes.map((item: any) =>
+              item.ID === optimisticId
+                ? { ...item, ...serverTheme }
+                : item
+            )
+          }));
+        }
+        triggerToast(
+          isEdit
+            ? 'Tema berhasil diperbarui di Spreadsheet!'
+            : 'Tema berhasil ditambahkan ke Spreadsheet!'
+        );
+      })
+      .catch((error: any) => {
+        console.error('Theme API Error:', error);
+        if (isEdit && original) {
+          setData((prev: typeof INITIAL_DATA) => ({
+            ...prev,
+            themes: prev.themes.map((item: any) =>
+              item.ID === d.ID ? original : item
+            )
+          }));
+        } else {
+          setData((prev: typeof INITIAL_DATA) => ({
+            ...prev,
+            themes: prev.themes.filter(
+              (item: any) => item.ID !== optimisticId
+            )
+          }));
+        }
+        triggerToast(
+          error.message || 'Gagal menyimpan tema ke Spreadsheet.'
+        );
+      });
+  };
+
+  const savePricing = () => {
+    const d = pricingModal.data;
+
+    if (!d.Nama.trim()) {
+      triggerToast('Nama paket tidak boleh kosong');
+      return;
+    }
+
+    const isEdit = pricingModal.isEdit;
+    const original = data.pricing.find(
+      (item: any) => item.ID === d.ID
+    );
+    const optimisticId = isEdit
+      ? d.ID
+      : `LOCAL-PRC-${Date.now()}`;
+    const finalPkg = {
+      ID: optimisticId,
+      Nama: d.Nama,
+      Harga: Number(d.Harga),
+      Deskripsi: d.Deskripsi,
+      Fitur: d.FiturText.split('\\n').map((s) => s.trim()).filter(Boolean),
+      Label: d.Label,
+      Featured: d.Featured,
+      Status: d.Status,
+      Urutan: 1
+    };
+    const apiPkg = {
+      ...finalPkg,
+      ID: isEdit ? d.ID : '',
+      Fitur: finalPkg.Fitur.join('\\n'),
+      Featured: finalPkg.Featured ? 'Ya' : 'Tidak'
+    };
+
+    setPricingModal(prev => ({ ...prev, open: false }));
+    setData((prev: typeof INITIAL_DATA) => ({
+      ...prev,
+      pricing: isEdit
         ? prev.pricing.map((item: any) =>
             item.ID === d.ID ? finalPkg : item
           )
         : [...prev.pricing, finalPkg]
     }));
+    triggerToast('Perubahan paket diterapkan...');
 
-    setPricingModal((prev) => ({
-      ...prev,
-      open: false
-    }));
-
-    triggerToast(
-      pricingModal.isEdit
-        ? "Paket berhasil diperbarui di Spreadsheet!"
-        : "Paket berhasil ditambahkan ke Spreadsheet!"
-    );
-  } catch (error: any) {
-    console.error("Pricing API Error:", error);
-    triggerToast(
-      error.message ||
-      "Gagal menyimpan paket ke Spreadsheet."
-    );
-  }
-};
-
-const saveFeature = async () => {
-  const d = featureModal.data;
-
-  if (!d.title.trim()) {
-    triggerToast("Judul fitur tidak boleh kosong");
-    return;
-  }
-
-  const apiFeature = {
-    ID: d.id,
-    Icon: d.icon,
-    Judul: d.title,
-    Deskripsi: d.desc,
-    Status: d.status,
-    Urutan: 1
+    void callApi(isEdit ? 'updatePricing' : 'createPricing', { data: apiPkg })
+      .then((result: any) => {
+        if (!isEdit) {
+          const serverPkg = result.data || {};
+          setData((prev: typeof INITIAL_DATA) => ({
+            ...prev,
+            pricing: prev.pricing.map((item: any) =>
+              item.ID === optimisticId
+                ? {
+                    ...item,
+                    ...serverPkg,
+                    Fitur: Array.isArray(serverPkg.Fitur)
+                      ? serverPkg.Fitur
+                      : item.Fitur,
+                    Featured:
+                      serverPkg.Featured === true ||
+                      String(serverPkg.Featured || '').toLowerCase() === 'ya'
+                  }
+                : item
+            )
+          }));
+        }
+        triggerToast(
+          isEdit
+            ? 'Paket berhasil diperbarui di Spreadsheet!'
+            : 'Paket berhasil ditambahkan ke Spreadsheet!'
+        );
+      })
+      .catch((error: any) => {
+        if (isEdit && original) {
+          setData((prev: typeof INITIAL_DATA) => ({
+            ...prev,
+            pricing: prev.pricing.map((item: any) =>
+              item.ID === d.ID ? original : item
+            )
+          }));
+        } else {
+          setData((prev: typeof INITIAL_DATA) => ({
+            ...prev,
+            pricing: prev.pricing.filter(
+              (item: any) => item.ID !== optimisticId
+            )
+          }));
+        }
+        triggerToast(error.message || 'Gagal menyimpan paket.');
+      });
   };
 
-  try {
-    await callApi(
-      featureModal.isEdit
-        ? "updateFeature"
-        : "createFeature",
-      { data: apiFeature }
-    );
-
-    setData((prev: typeof INITIAL_DATA) => ({
-      ...prev,
-      features: featureModal.isEdit
-        ? prev.features.map((item: any) =>
-            item.id === d.id ? d : item
-          )
-        : [...prev.features, d]
-    }));
-
-    setFeatureModal((prev) => ({
-      ...prev,
-      open: false
-    }));
-
-    triggerToast(
-      featureModal.isEdit
-        ? "Fitur berhasil diperbarui di Spreadsheet!"
-        : "Fitur berhasil ditambahkan ke Spreadsheet!"
-    );
-  } catch (error: any) {
-    console.error("Feature API Error:", error);
-    triggerToast(
-      error.message ||
-      "Gagal menyimpan fitur."
-    );
-  }
-};
-
-const saveTestimonial = async () => {
-  const d = testiModal.data;
-
-  if (!d.name.trim() || !d.testi.trim()) {
-    triggerToast(
-      "Nama dan isi ulasan wajib diisi"
-    );
-    return;
-  }
-
-  const apiTestimonial = {
-    ID: d.id,
-    Nama: d.name,
-    Foto: d.photo,
-    Testimoni: d.testi,
-    Rating: Number(d.rating),
-    Lokasi: d.location,
-    Status: d.status,
-    Urutan: 1
-  };
-
-  try {
-    await callApi(
-      testiModal.isEdit
-        ? "updateTestimonial"
-        : "createTestimonial",
-      { data: apiTestimonial }
-    );
-
-    setData((prev: typeof INITIAL_DATA) => ({
-      ...prev,
-      testimonials: testiModal.isEdit
-        ? prev.testimonials.map((item: any) =>
-            item.id === d.id ? d : item
-          )
-        : [...prev.testimonials, d]
-    }));
-
-    setTestiModal((prev) => ({
-      ...prev,
-      open: false
-    }));
-
-    triggerToast(
-      testiModal.isEdit
-        ? "Testimoni berhasil diperbarui di Spreadsheet!"
-        : "Testimoni berhasil ditambahkan ke Spreadsheet!"
-    );
-  } catch (error: any) {
-    console.error("Testimonial API Error:", error);
-    triggerToast(
-      error.message ||
-      "Gagal menyimpan testimoni."
-    );
-  }
-};
-
-const saveFaq = async () => {
-  const d = faqModal.data;
-
-  if (!d.question.trim() || !d.answer.trim()) {
-    triggerToast(
-      "Pertanyaan dan jawaban wajib diisi"
-    );
-    return;
-  }
-
-  const apiFaq = {
-    ID: d.id,
-    Pertanyaan: d.question,
-    Jawaban: d.answer,
-    Status: "Aktif",
-    Urutan: 1
-  };
-
-  try {
-    await callApi(
-      faqModal.isEdit
-        ? "updateFAQ"
-        : "createFAQ",
-      { data: apiFaq }
-    );
-
-    setData((prev: typeof INITIAL_DATA) => ({
-      ...prev,
-      faq: faqModal.isEdit
-        ? prev.faq.map((item: any) =>
-            item.id === d.id
-              ? {
-                  ...d,
-                  status: "Aktif"
-                }
-              : item
-          )
-        : [
-            ...prev.faq,
-            {
-              ...d,
-              status: "Aktif"
-            }
-          ]
-    }));
-
-    setFaqModal((prev) => ({
-      ...prev,
-      open: false
-    }));
-
-    triggerToast(
-      faqModal.isEdit
-        ? "FAQ berhasil diperbarui di Spreadsheet!"
-        : "FAQ berhasil ditambahkan ke Spreadsheet!"
-    );
-  } catch (error: any) {
-    console.error("FAQ API Error:", error);
-    triggerToast(
-      error.message ||
-      "Gagal menyimpan FAQ."
-    );
-  }
-};
-
-const saveHowToOrder = async () => {
-  const rows = data.howToOrder.map(
-    (step: any, index: number) => ({
-      Nomor:
-        step.num ||
-        String(index + 1).padStart(2, "0"),
-      Judul: step.title,
-      Deskripsi: step.desc,
-      Icon: step.icon || "FileText",
-      Status: step.status || "Aktif",
-      Urutan: index + 1
-    })
-  );
-
-  try {
-    for (const row of rows) {
-      await callApi(
-        "updateHowToOrder",
-        { data: row }
-      );
+  const saveFeature = () => {
+    const d = featureModal.data;
+    if (!d.title.trim()) {
+      triggerToast('Judul fitur tidak boleh kosong');
+      return;
     }
 
-    triggerToast(
-      "Cara Pesan berhasil disimpan ke Spreadsheet!"
-    );
-  } catch (error: any) {
-    console.error(
-      "HowToOrder API Error:",
-      error
-    );
+    const isEdit = featureModal.isEdit;
+    const original = data.features.find((item: any) => item.id === d.id);
+    const optimisticId = isEdit ? d.id : `LOCAL-FEAT-${Date.now()}`;
+    const optimistic = { ...d, id: optimisticId };
+    const apiFeature = {
+      ID: isEdit ? d.id : '',
+      Icon: d.icon,
+      Judul: d.title,
+      Deskripsi: d.desc,
+      Status: d.status,
+      Urutan: 1
+    };
 
-    triggerToast(
-      error.message ||
-      "Gagal menyimpan Cara Pesan."
-    );
-  }
-};
-
-const saveHome = async () => {
-  try {
-    await callApi("updateHome", {
-      data: data.home
-    });
-
-    triggerToast(
-      "Home & Hero berhasil disimpan ke Spreadsheet!"
-    );
-  } catch (error: any) {
-    console.error("Home API Error:", error);
-
-    triggerToast(
-      error.message ||
-      "Gagal menyimpan Home."
-    );
-  }
-};
-
-const saveSettings = async () => {
-  try {
-    const {
-      adminPassword,
-      ...settingsToSave
-    } = data.settings as any;
-
-    await callApi("updateSettings", {
-      data: settingsToSave
-    });
-
-    triggerToast(
-      "Pengaturan berhasil disimpan ke Spreadsheet!"
-    );
-  } catch (error: any) {
-    console.error(
-      "Settings API Error:",
-      error
-    );
-
-    triggerToast(
-      error.message ||
-      "Gagal menyimpan pengaturan."
-    );
-  }
-};
-
-const saveAdminUsername = async () => {
-  const username = (
-    data.settings.adminUsername || ""
-  ).trim();
-
-  if (!username) {
-    triggerToast(
-      "Username admin tidak boleh kosong."
-    );
-    return;
-  }
-
-  try {
-    await callApi("updateAdminUsername", {
-      username
-    });
-
+    setFeatureModal(prev => ({ ...prev, open: false }));
     setData((prev: typeof INITIAL_DATA) => ({
       ...prev,
-      settings: {
-        ...prev.settings,
-        adminUsername: username
-      }
+      features: isEdit
+        ? prev.features.map((item: any) =>
+            item.id === d.id ? optimistic : item
+          )
+        : [...prev.features, optimistic]
     }));
+    triggerToast('Perubahan fitur diterapkan...');
 
-    triggerToast(
-      "Username admin berhasil diperbarui."
-    );
-  } catch (error: any) {
-    console.error(
-      "Admin Username API Error:",
-      error
+    void callApi(isEdit ? 'updateFeature' : 'createFeature', { data: apiFeature })
+      .then((result: any) => {
+        if (!isEdit) {
+          const serverFeature = result.data || {};
+          setData((prev: typeof INITIAL_DATA) => ({
+            ...prev,
+            features: prev.features.map((item: any) =>
+              item.id === optimisticId
+                ? {
+                    ...item,
+                    id: serverFeature.ID || item.id,
+                    icon: serverFeature.Icon || item.icon,
+                    title: serverFeature.Judul || item.title,
+                    desc: serverFeature.Deskripsi || item.desc,
+                    status: serverFeature.Status || item.status
+                  }
+                : item
+            )
+          }));
+        }
+        triggerToast(
+          isEdit
+            ? 'Fitur berhasil diperbarui di Spreadsheet!'
+            : 'Fitur berhasil ditambahkan ke Spreadsheet!'
+        );
+      })
+      .catch((error: any) => {
+        if (isEdit && original) {
+          setData((prev: typeof INITIAL_DATA) => ({
+            ...prev,
+            features: prev.features.map((item: any) =>
+              item.id === d.id ? original : item
+            )
+          }));
+        } else {
+          setData((prev: typeof INITIAL_DATA) => ({
+            ...prev,
+            features: prev.features.filter(
+              (item: any) => item.id !== optimisticId
+            )
+          }));
+        }
+        triggerToast(error.message || 'Gagal menyimpan fitur.');
+      });
+  };
+
+  const saveTestimonial = () => {
+    const d = testiModal.data;
+    if (!d.name.trim() || !d.testi.trim()) {
+      triggerToast('Nama dan isi ulasan wajib diisi');
+      return;
+    }
+
+    const isEdit = testiModal.isEdit;
+    const original = data.testimonials.find((item: any) => item.id === d.id);
+    const optimisticId = isEdit ? d.id : `LOCAL-TESTI-${Date.now()}`;
+    const optimistic = { ...d, id: optimisticId };
+    const apiTestimonial = {
+      ID: isEdit ? d.id : '',
+      Nama: d.name,
+      Foto: d.photo,
+      Testimoni: d.testi,
+      Rating: Number(d.rating),
+      Lokasi: d.location,
+      Status: d.status,
+      Urutan: 1
+    };
+
+    setTestiModal(prev => ({ ...prev, open: false }));
+    setData((prev: typeof INITIAL_DATA) => ({
+      ...prev,
+      testimonials: isEdit
+        ? prev.testimonials.map((item: any) =>
+            item.id === d.id ? optimistic : item
+          )
+        : [...prev.testimonials, optimistic]
+    }));
+    triggerToast('Perubahan testimoni diterapkan...');
+
+    void callApi(
+      isEdit ? 'updateTestimonial' : 'createTestimonial',
+      { data: apiTestimonial }
+    )
+      .then((result: any) => {
+        if (!isEdit) {
+          const serverItem = result.data || {};
+          setData((prev: typeof INITIAL_DATA) => ({
+            ...prev,
+            testimonials: prev.testimonials.map((item: any) =>
+              item.id === optimisticId
+                ? {
+                    ...item,
+                    id: serverItem.ID || item.id
+                  }
+                : item
+            )
+          }));
+        }
+        triggerToast(
+          isEdit
+            ? 'Testimoni berhasil diperbarui di Spreadsheet!'
+            : 'Testimoni berhasil ditambahkan ke Spreadsheet!'
+        );
+      })
+      .catch((error: any) => {
+        if (isEdit && original) {
+          setData((prev: typeof INITIAL_DATA) => ({
+            ...prev,
+            testimonials: prev.testimonials.map((item: any) =>
+              item.id === d.id ? original : item
+            )
+          }));
+        } else {
+          setData((prev: typeof INITIAL_DATA) => ({
+            ...prev,
+            testimonials: prev.testimonials.filter(
+              (item: any) => item.id !== optimisticId
+            )
+          }));
+        }
+        triggerToast(error.message || 'Gagal menyimpan testimoni.');
+      });
+  };
+
+  const saveFaq = () => {
+    const d = faqModal.data;
+    if (!d.question.trim() || !d.answer.trim()) {
+      triggerToast('Pertanyaan dan jawaban wajib diisi');
+      return;
+    }
+
+    const isEdit = faqModal.isEdit;
+    const original = data.faq.find((item: any) => item.id === d.id);
+    const optimisticId = isEdit ? d.id : `LOCAL-FAQ-${Date.now()}`;
+    const optimistic = { ...d, id: optimisticId, status: 'Aktif' };
+    const apiFaq = {
+      ID: isEdit ? d.id : '',
+      Pertanyaan: d.question,
+      Jawaban: d.answer,
+      Status: 'Aktif',
+      Urutan: 1
+    };
+
+    setFaqModal(prev => ({ ...prev, open: false }));
+    setData((prev: typeof INITIAL_DATA) => ({
+      ...prev,
+      faq: isEdit
+        ? prev.faq.map((item: any) =>
+            item.id === d.id ? optimistic : item
+          )
+        : [...prev.faq, optimistic]
+    }));
+    triggerToast('Perubahan FAQ diterapkan...');
+
+    void callApi(isEdit ? 'updateFAQ' : 'createFAQ', { data: apiFaq })
+      .then((result: any) => {
+        if (!isEdit) {
+          const serverItem = result.data || {};
+          setData((prev: typeof INITIAL_DATA) => ({
+            ...prev,
+            faq: prev.faq.map((item: any) =>
+              item.id === optimisticId
+                ? { ...item, id: serverItem.ID || item.id }
+                : item
+            )
+          }));
+        }
+        triggerToast(
+          isEdit
+            ? 'FAQ berhasil diperbarui di Spreadsheet!'
+            : 'FAQ berhasil ditambahkan ke Spreadsheet!'
+        );
+      })
+      .catch((error: any) => {
+        if (isEdit && original) {
+          setData((prev: typeof INITIAL_DATA) => ({
+            ...prev,
+            faq: prev.faq.map((item: any) =>
+              item.id === d.id ? original : item
+            )
+          }));
+        } else {
+          setData((prev: typeof INITIAL_DATA) => ({
+            ...prev,
+            faq: prev.faq.filter(
+              (item: any) => item.id !== optimisticId
+            )
+          }));
+        }
+        triggerToast(error.message || 'Gagal menyimpan FAQ.');
+      });
+  };
+
+  const saveHowToOrder = () => {
+    const rows = data.howToOrder.map(
+      (step: any, index: number) => ({
+        Nomor: step.num || String(index + 1).padStart(2, '0'),
+        Judul: step.title,
+        Deskripsi: step.desc,
+        Icon: step.icon || 'FileText',
+        Status: step.status || 'Aktif',
+        Urutan: index + 1
+      })
     );
 
-    triggerToast(
-      error.message ||
-      "Gagal memperbarui username admin."
-    );
-  }
-};
-  // Handle Order Submit
-  const handleOrderSubmit = async (e: React.FormEvent) => {
+    triggerToast('Cara Pesan diperbarui...');
+
+    void callApi('bulkUpdateHowToOrder', { data: rows })
+      .then(() => {
+        triggerToast('Cara Pesan berhasil disimpan ke Spreadsheet!');
+      })
+      .catch((error: any) => {
+        void refreshAllData(false);
+        triggerToast(error.message || 'Gagal menyimpan Cara Pesan.');
+      });
+  };
+
+  const saveHome = () => {
+    triggerToast('Home & Hero diperbarui...');
+
+    void callApi('updateHome', { data: data.home })
+      .then(() => {
+        triggerToast('Home & Hero berhasil disimpan ke Spreadsheet!');
+      })
+      .catch((error: any) => {
+        void refreshAllData(false);
+        triggerToast(error.message || 'Gagal menyimpan Home.');
+      });
+  };
+
+  const saveSettings = () => {
+    const { adminPassword, ...settingsToSave } = data.settings as any;
+
+    triggerToast('Pengaturan diperbarui...');
+
+    void callApi('updateSettings', { data: settingsToSave })
+      .then(() => {
+        triggerToast('Pengaturan berhasil disimpan ke Spreadsheet!');
+      })
+      .catch((error: any) => {
+        void refreshAllData(false);
+        triggerToast(error.message || 'Gagal menyimpan pengaturan.');
+      });
+  };
+
+  const saveAdminUsername = () => {
+    const username = String(data.settings.adminUsername || '').trim();
+
+    if (!username) {
+      triggerToast('Username admin tidak boleh kosong.');
+      return;
+    }
+
+    triggerToast('Username diperbarui...');
+
+    void callApi('updateAdminUsername', { username })
+      .then(() => {
+        const session = readAdminSession();
+        if (session?.token) {
+          storeAdminSession(
+            session.token,
+            username,
+            new Date(session.expiresAt).toISOString()
+          );
+        }
+        triggerToast('Username admin berhasil diperbarui.');
+      })
+      .catch((error: any) => {
+        void refreshAllData(false);
+        triggerToast(
+          error.message || 'Gagal memperbarui username admin.'
+        );
+      });
+  };
+
+  // Handle Order Submit: WhatsApp tampil segera, Spreadsheet disimpan di background.
+  const handleOrderSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
     const newOrder = {
       id:
-        "ORD-" +
+        'ORD-' +
         new Date().getFullYear() +
-        ("0" + (new Date().getMonth() + 1)).slice(-2) +
-        "-" +
+        ('0' + (new Date().getMonth() + 1)).slice(-2) +
+        '-' +
         Math.floor(100 + Math.random() * 900),
       date: new Date().toISOString().replace('T', ' ').slice(0, 16),
       customerName: orderForm.nama,
@@ -1287,33 +1503,10 @@ const saveAdminUsername = async () => {
       location: orderForm.lokasi,
       package: orderForm.paket,
       notes: orderForm.catatan,
-      status: "Baru"
+      status: 'Baru'
     };
 
-    try {
-      const apiResult = await callApi(
-        "createOrder",
-        { data: newOrder },
-        false
-      );
-
-      const backendOrderId =
-        apiResult.data?.orderId || newOrder.id;
-      const backendDate =
-        apiResult.data?.tanggal || newOrder.date;
-
-      const savedOrder = {
-        ...newOrder,
-        id: backendOrderId,
-        date: backendDate
-      };
-
-      setData((prev: typeof INITIAL_DATA) => ({
-        ...prev,
-        orders: [savedOrder, ...prev.orders]
-      }));
-
-      const waText =
+    const waText =
 `Halo NGULEMIN, saya ingin memesan undangan digital.
 
 Nama: ${orderForm.nama}
@@ -1326,138 +1519,156 @@ Lokasi: ${orderForm.lokasi}
 Paket: ${orderForm.paket}
 Catatan: ${orderForm.catatan || '-'}`;
 
-      const adminPhone = String(
-        data.settings.whatsappAdmin ||
-        "6281234567890"
-      ).replace(/[^0-9]/g, '');
+    const adminPhone = String(
+      data.settings.whatsappAdmin || '6281234567890'
+    ).replace(/[^0-9]/g, '');
 
-      const waUrl = `https://wa.me/${adminPhone}?text=${encodeURIComponent(waText)}`;
-      setLastGeneratedWaUrl(waUrl);
+    const waUrl = `https://wa.me/${adminPhone}?text=${encodeURIComponent(waText)}`;
 
-      setOrderSubmittedSuccess(true);
-      triggerToast("Pesanan berhasil disimpan ke Spreadsheet!");
-    } catch (error: any) {
-      console.error("Create Order Error:", error);
-      triggerToast(
-        error.message ||
-        "Gagal menyimpan pesanan ke Spreadsheet."
-      );
-    }
+    setLastGeneratedWaUrl(waUrl);
+    setOrderSaveStatus('saving');
+    setOrderSaveMessage('Menyimpan data ke Google Spreadsheet di background...');
+    setOrderSubmittedSuccess(true);
+
+    // UI tidak menunggu Apps Script.
+    void callApi('createOrder', { data: newOrder }, false)
+      .then((apiResult: any) => {
+        const backendOrderId = apiResult.data?.orderId || newOrder.id;
+        const backendDate = apiResult.data?.tanggal || newOrder.date;
+        const savedOrder = {
+          ...newOrder,
+          id: backendOrderId,
+          date: backendDate
+        };
+
+        setData((prev: typeof INITIAL_DATA) => ({
+          ...prev,
+          orders: [savedOrder, ...prev.orders]
+        }));
+
+        setOrderSaveStatus('saved');
+        setOrderSaveMessage('Data berhasil tersimpan di Google Spreadsheet.');
+        triggerToast('Pesanan berhasil disimpan ke Spreadsheet!');
+      })
+      .catch((error: any) => {
+        console.error('Create Order Error:', error);
+        setOrderSaveStatus('error');
+        setOrderSaveMessage(
+          error.message ||
+          'WhatsApp tetap siap dikirim, tetapi penyimpanan Spreadsheet belum dapat dikonfirmasi.'
+        );
+        triggerToast(
+          error.message ||
+          'Penyimpanan pesanan belum dapat dikonfirmasi.'
+        );
+      });
   };
 
   const openOrderWithTheme = (themeName: string) => {
     setOrderForm(prev => ({ ...prev, tema: themeName }));
     setOrderSubmittedSuccess(false);
+    setOrderSaveStatus('idle');
+    setOrderSaveMessage('');
     setOrderModalOpen(true);
   };
 
   const openOrderWithPackage = (pkgName: string) => {
     setOrderForm(prev => ({ ...prev, paket: pkgName }));
     setOrderSubmittedSuccess(false);
+    setOrderSaveStatus('idle');
+    setOrderSaveMessage('');
     setOrderModalOpen(true);
   };
 
-  // Handle Admin Login
-const handleLogin = async (e: React.FormEvent) => {
-  e.preventDefault();
-  setLoginLoading(true);
-  setLoginError('');
+  // Login: pulihkan session lokal segera; verifikasi server berjalan di background.
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError('');
 
-  const apiUrl = (
-    data.settings.apiUrl ||
-    ((window as any).CONFIG?.API_URL as string) ||
-    ''
-  ).trim();
-
-  if (!apiUrl) {
-    setLoginError('URL Google Apps Script belum dikonfigurasi.');
-    setLoginLoading(false);
-    return;
-  }
-
-  try {
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'text/plain;charset=utf-8'
-      },
-      body: JSON.stringify({
-        action: 'login',
-        username: loginUser.trim(),
-        password: loginPass
-      })
-    });
-
-    const result = await response.json();
-
-    if (!result.success || !result.data?.token) {
-      throw new Error(
-        result.message || 'Username atau password salah.'
-      );
+    const apiUrl = getConfiguredApiUrl();
+    if (!apiUrl) {
+      setLoginError('URL Google Apps Script belum dikonfigurasi.');
+      return;
     }
 
-    const token = result.data.token;
+    const cached = readAdminSession();
+    const enteredUser = loginUser.trim().toLowerCase();
 
-    localStorage.setItem(
-      'ngulemin_admin_token',
-      token
-    );
+    if (
+      cached?.token &&
+      cached?.username &&
+      cached.username.toLowerCase() === enteredUser
+    ) {
+      setAdminToken(cached.token);
+      setCurrentView('dashboard');
+      setLoginLoading(false);
+      triggerToast('Sesi admin dipulihkan.');
+      void validateCachedSession(cached.token);
+      return;
+    }
 
-    localStorage.setItem(
-      'ngulemin_admin_user',
-      result.data.username || loginUser.trim()
-    );
+    setLoginLoading(true);
 
-    setAdminToken(token);
-    setCurrentView('dashboard');
+    try {
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'text/plain;charset=utf-8'
+        },
+        body: JSON.stringify({
+          action: 'login',
+          username: loginUser.trim(),
+          password: loginPass
+        }),
+        cache: 'no-store'
+      });
 
-    triggerToast(
-      'Login berhasil. Terhubung ke Google Apps Script.'
-    );
-  } catch (error: any) {
-    console.error('Login Error:', error);
+      const result = await response.json();
 
-    setLoginError(
-      error.message ||
-      'Gagal terhubung ke Google Apps Script.'
-    );
-  } finally {
-    setLoginLoading(false);
-  }
-};
-
-  const handleLogout = () => {
-    void (async () => {
-      try {
-        if (adminToken) {
-          await callApi(
-            "logout",
-            {},
-            true
-          );
-        }
-      } catch (error) {
-        console.warn(
-          "Logout API warning:",
-          error
-        );
-      } finally {
-        localStorage.removeItem(
-          "ngulemin_admin_token"
-        );
-  
-        localStorage.removeItem(
-          "ngulemin_admin_user"
-        );
-  
-        setAdminToken(null);
-        setCurrentView("public");
-  
-        triggerToast(
-          "Berhasil keluar dari dashboard."
+      if (!response.ok || !result.success || !result.data?.token) {
+        throw new Error(
+          result.message || 'Username atau password salah.'
         );
       }
-    })();
+
+      const token = result.data.token;
+      const username = result.data.username || loginUser.trim();
+      const expires = result.data.expires || new Date(
+        Date.now() + 24 * 60 * 60 * 1000
+      ).toISOString();
+
+      storeAdminSession(token, username, expires);
+      setAdminToken(token);
+      setCurrentView('dashboard');
+      setLoginPass('');
+
+      triggerToast('Login berhasil.');
+    } catch (error: any) {
+      console.error('Login Error:', error);
+      setLoginError(
+        error.message ||
+        'Gagal terhubung ke Google Apps Script.'
+      );
+    } finally {
+      setLoginLoading(false);
+    }
+  };
+
+  const handleLogout = () => {
+    const token = adminToken;
+
+    clearAdminSession();
+    setAdminToken(null);
+    setCurrentView('public');
+
+    triggerToast('Berhasil keluar dari dashboard.');
+
+    // Logout backend dikerjakan di background.
+    if (token) {
+      void callApi('logout', {}, true).catch((error) => {
+        console.warn('Logout API warning:', error);
+      });
+    }
   };
 
   const renderIcon = (iconName: string) => {
@@ -1638,6 +1849,8 @@ const handleLogin = async (e: React.FormEvent) => {
               <button
                 onClick={() => {
                   setOrderSubmittedSuccess(false);
+                        setOrderSaveStatus('idle');
+                        setOrderSaveMessage('');
                   setOrderModalOpen(true);
                 }}
                 className="px-4 sm:px-5 py-2 text-xs sm:text-sm font-semibold text-white bg-[#8C6D46] hover:bg-[#735735] rounded-xl shadow-sm transition-all transform hover:-translate-y-0.5 whitespace-nowrap"
@@ -1714,6 +1927,8 @@ const handleLogin = async (e: React.FormEvent) => {
                 onClick={() => {
                   setMobileMenuOpen(false);
                   setOrderSubmittedSuccess(false);
+                        setOrderSaveStatus('idle');
+                        setOrderSaveMessage('');
                   setOrderModalOpen(true);
                 }}
                 className="w-full py-2.5 text-center text-sm font-semibold text-white bg-[#8C6D46] rounded-xl shadow-sm"
@@ -1859,6 +2074,8 @@ const handleLogin = async (e: React.FormEvent) => {
                   <button
                     onClick={() => {
                       setOrderSubmittedSuccess(false);
+                        setOrderSaveStatus('idle');
+                        setOrderSaveMessage('');
                       setOrderModalOpen(true);
                     }}
                     className="px-7 py-3 text-sm font-semibold text-white bg-[#8C6D46] hover:bg-[#735735] rounded-xl shadow-md transition-all transform hover:-translate-y-0.5"
@@ -2304,6 +2521,8 @@ const handleLogin = async (e: React.FormEvent) => {
               <button
                 onClick={() => {
                   setOrderSubmittedSuccess(false);
+                        setOrderSaveStatus('idle');
+                        setOrderSaveMessage('');
                   setOrderModalOpen(true);
                 }}
                 className="px-8 py-3.5 text-sm font-semibold text-[#24201D] bg-[#D4AF37] hover:bg-[#E5C158] rounded-xl shadow-lg transition-transform transform hover:-translate-y-0.5"
@@ -2588,7 +2807,7 @@ const handleLogin = async (e: React.FormEvent) => {
                     </thead>
                     <tbody className="divide-y divide-[#E8E1D9]">
                       {data.orders.map((ord: any) => {
-                        const cleanWa = String(ord.whatsapp || '').replace(/[^0-9]/g, '');
+                        const cleanWa = StringString(ord.whatsapp || '').replace(/[^0-9]/g, '');
                         return (
                           <tr key={ord.id} className="hover:bg-[#FAF8F5]/60 transition-colors">
                             <td className="p-3">
@@ -3816,14 +4035,52 @@ const handleLogin = async (e: React.FormEvent) => {
 
             {orderSubmittedSuccess ? (
               <div className="p-6 text-center space-y-4">
-                <div className="w-14 h-14 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto">
-                  <Check className="w-8 h-8" />
+                <div className={`w-14 h-14 rounded-full flex items-center justify-center mx-auto ${
+                  orderSaveStatus === 'error'
+                    ? 'bg-red-100 text-red-600'
+                    : 'bg-emerald-100 text-emerald-600'
+                }`}>
+                  {orderSaveStatus === 'error' ? (
+                    <X className="w-8 h-8" />
+                  ) : (
+                    <Check className="w-8 h-8" />
+                  )}
                 </div>
                 <h4 className="text-xl font-serif-luxury font-bold text-[#2D2723]">
-                  Pesanan Berhasil Dicatat!
+                  Pesanan Siap Dilanjutkan ke WhatsApp
                 </h4>
+                <div className={`rounded-xl border px-4 py-3 text-left ${
+                  orderSaveStatus === 'saved'
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                    : orderSaveStatus === 'error'
+                      ? 'bg-red-50 border-red-200 text-red-800'
+                      : 'bg-amber-50 border-amber-200 text-amber-800'
+                }`}>
+                  <div className="flex items-start gap-2">
+                    {orderSaveStatus === 'saved' ? (
+                      <Check className="w-4 h-4 mt-0.5 shrink-0" />
+                    ) : orderSaveStatus === 'error' ? (
+                      <X className="w-4 h-4 mt-0.5 shrink-0" />
+                    ) : (
+                      <span className="w-4 h-4 mt-0.5 shrink-0 rounded-full border-2 border-amber-600 border-t-transparent animate-spin" />
+                    )}
+                    <div>
+                      <div className="text-xs font-bold">
+                        {orderSaveStatus === 'saved'
+                          ? 'Pesanan tersimpan'
+                          : orderSaveStatus === 'error'
+                            ? 'Penyimpanan perlu diperiksa'
+                            : 'Menyimpan pesanan...'}
+                      </div>
+                      <p className="text-[11px] mt-1 leading-relaxed">
+                        {orderSaveMessage || 'Mohon tunggu sebentar.'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
                 <p className="text-xs sm:text-sm text-[#766E65] leading-relaxed">
-                  Data Anda telah tersimpan. Silakan lanjutkan pesan otomatis ini ke WhatsApp Admin untuk memulai pengerjaan.
+                  Anda tidak perlu menunggu proses Spreadsheet untuk membuka WhatsApp. Pesan WhatsApp sudah siap dan tombol di bawah dapat digunakan sekarang.
                 </p>
                 
                 <div className="pt-2">
@@ -3833,7 +4090,7 @@ const handleLogin = async (e: React.FormEvent) => {
                     rel="noreferrer"
                     className="inline-flex items-center justify-center gap-2 px-6 py-3 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-md w-full"
                   >
-                    <Send className="w-4 h-4" /> Buka WhatsApp Admin Sekarang
+                    <Send className="w-4 h-4" /> Kirim / Buka WhatsApp Admin
                   </a>
                 </div>
 
@@ -4006,50 +4263,9 @@ const handleLogin = async (e: React.FormEvent) => {
             </div>
 
             <form
-              onSubmit={async (e) => {
+              onSubmit={(e) => {
                 e.preventDefault();
-                const d = themeModal.data;
-
-                if (!d.Nama.trim()) {
-                  triggerToast("Nama tema tidak boleh kosong");
-                  return;
-                }
-
-                try {
-                  await callApi(
-                    themeModal.isEdit
-                      ? "updateTheme"
-                      : "createTheme",
-                    { data: d },
-                    true
-                  );
-
-                  setData((prev: typeof INITIAL_DATA) => ({
-                    ...prev,
-                    themes: themeModal.isEdit
-                      ? prev.themes.map((theme: any) =>
-                          theme.ID === d.ID ? d : theme
-                        )
-                      : [...prev.themes, d]
-                  }));
-
-                  setThemeModal(prev => ({
-                    ...prev,
-                    open: false
-                  }));
-
-                  triggerToast(
-                    themeModal.isEdit
-                      ? "Tema berhasil diperbarui di Spreadsheet!"
-                      : "Tema baru berhasil ditambahkan ke Spreadsheet!"
-                  );
-                } catch (error: any) {
-                  console.error("Theme API Error:", error);
-                  triggerToast(
-                    error.message ||
-                    "Gagal menyimpan tema ke Spreadsheet."
-                  );
-                }
+                saveTheme();
               }}
               className="p-5 sm:p-6 space-y-4 text-xs"
             >
