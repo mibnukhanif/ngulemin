@@ -301,7 +301,10 @@ export default function App() {
 
   // App Data (Loaded from LocalStorage or Default)
   const [data, setData] = useState(() => {
-    const envApi = ((import.meta as any).env?.VITE_API_URL as string) || "";
+    const envApi =
+  ((import.meta as any).env?.VITE_API_URL as string) ||
+  ((window as any).CONFIG?.API_URL as string) ||
+  "";
     const saved = localStorage.getItem('ngulemin_site_data');
     if (saved) {
       try {
