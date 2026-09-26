@@ -57,17 +57,32 @@ function doGet(e) {
         return jsonResponse({ success: true, message: "Inisialisasi database berhasil selesai!" });
 
       case "getAllData":
-        var data = {
-          settings: getSettingsData(ss),
-          home: getHomeData(ss),
-          themes: getThemesData(ss),
-          pricing: getPricingData(ss),
-          features: getFeaturesData(ss),
-          testimonials: getTestimonialsData(ss),
-          howToOrder: getHowToOrderData(ss),
-          faq: getFAQData(ss)
-        };
-        return jsonResponse({ success: true, data: data });
+  // Pastikan kolom tambahan tersedia pada database lama
+  ensureSheetColumns(ss, "Themes", [
+    "ID", "Nama", "Gambar", "Deskripsi", "Harga",
+    "PreviewURL", "Category", "Status", "Urutan"
+  ]);
+
+  ensureSheetColumns(ss, "Testimonials", [
+    "ID", "Nama", "Foto", "Testimoni", "Rating",
+    "Lokasi", "Status", "Urutan"
+  ]);
+
+  var data = {
+    settings: getSettingsData(ss),
+    home: getHomeData(ss),
+    themes: getThemesData(ss),
+    pricing: getPricingData(ss),
+    features: getFeaturesData(ss),
+    testimonials: getTestimonialsData(ss),
+    howToOrder: getHowToOrderData(ss),
+    faq: getFAQData(ss)
+  };
+
+  return jsonResponse({
+    success: true,
+    data: data
+  });
 
       case "getSettings":
         return jsonResponse({ success: true, data: getSettingsData(ss) });
@@ -177,9 +192,17 @@ function doPost(e) {
       case "updateHome":
         return jsonResponse(updateHomeData(ss, payload.data));
 
+      case "updateAdminUsername":
+        return jsonResponse(
+          handleUpdateAdminUsername(ss, payload.username)
+        );
+
       // THEMES CRUD
       case "createTheme":
-        return jsonResponse(createRow(ss, "Themes", payload.data, ["ID", "Nama", "Gambar", "Deskripsi", "Harga", "PreviewURL", "Status", "Urutan"]));
+        ensureSheetColumns(ss, "Themes", ["ID", "Nama", "Gambar", "Deskripsi", "Harga", "PreviewURL", "Category", "Status", "Urutan"]);
+      return jsonResponse(
+        createRow(ss, "Themes", payload.data, ["ID", "Nama", "Gambar", "Deskripsi", "Harga", "PreviewURL", "Category", "Status", "Urutan"])
+      );
       case "updateTheme":
         return jsonResponse(updateRow(ss, "Themes", payload.data));
       case "deleteTheme":
@@ -203,7 +226,10 @@ function doPost(e) {
 
       // TESTIMONIALS CRUD
       case "createTestimonial":
-        return jsonResponse(createRow(ss, "Testimonials", payload.data, ["ID", "Nama", "Foto", "Testimoni", "Rating", "Status", "Urutan"]));
+  ensureSheetColumns(ss, "Testimonials", ["ID", "Nama", "Foto", "Testimoni", "Rating", "Lokasi", "Status", "Urutan"]);
+  return jsonResponse(
+    createRow(ss, "Testimonials", payload.data, ["ID", "Nama", "Foto", "Testimoni", "Rating", "Lokasi", "Status", "Urutan"])
+  );
       case "updateTestimonial":
         return jsonResponse(updateRow(ss, "Testimonials", payload.data));
       case "deleteTestimonial":
@@ -287,12 +313,42 @@ function initDatabase() {
   ensureSheetWithData(ss, "Home", homeHeaders, homeRows);
 
   // 3. Sheet Themes
-  var themesHeaders = ["ID", "Nama", "Gambar", "Deskripsi", "Harga", "PreviewURL", "Status", "Urutan"];
+  var themesHeaders = ["ID", "Nama", "Gambar", "Deskripsi", "Harga", "PreviewURL", "Category", "Status", "Urutan"];
   var themesRows = [
-    ["THM-01", "Elegant Rose", "/assets/images/theme_rose_luxury_1790268952948.jpg", "Nuansa romantis bernuansa soft rose gold dengan aksen floral watercolor yang mewah dan memikat.", 99000, "https://ngulemin.id/preview/elegant-rose", "Aktif", 1],
-    ["THM-02", "Royal Heritage", "/assets/images/theme_javanese_gold_1790268966316.jpg", "Perpaduan klasik adat nusantara dengan sentuhan ornamen batik emas modern berkelas tinggi.", 129000, "https://ngulemin.id/preview/royal-heritage", "Aktif", 2],
-    ["THM-03", "Pure Botanical", "/assets/images/theme_minimalist_sage_1790268978210.jpg", "Konsep minimalis kontemporer dengan daun eucalyptus segar, tipografi serif modern, dan monogram emas.", 99000, "https://ngulemin.id/preview/pure-botanical", "Aktif", 3]
-  ];
+  [
+    "THM-01",
+    "Elegant Rose",
+    "/assets/images/theme_rose_luxury_1790268952948.jpg",
+    "Nuansa romantis bernuansa soft rose gold dengan aksen floral watercolor yang mewah dan memikat.",
+    99000,
+    "https://ngulemin.id/preview/elegant-rose",
+    "Floral & Romantic",
+    "Aktif",
+    1
+  ],
+  [
+    "THM-02",
+    "Royal Heritage",
+    "/assets/images/theme_javanese_gold_1790268966316.jpg",
+    "Perpaduan klasik adat nusantara dengan sentuhan ornamen batik emas modern berkelas tinggi.",
+    129000,
+    "https://ngulemin.id/preview/royal-heritage",
+    "Adat & Traditional",
+    "Aktif",
+    2
+  ],
+  [
+    "THM-03",
+    "Pure Botanical",
+    "/assets/images/theme_minimalist_sage_1790268978210.jpg",
+    "Konsep minimalis kontemporer dengan daun eucalyptus segar, tipografi serif modern, dan monogram emas.",
+    99000,
+    "https://ngulemin.id/preview/pure-botanical",
+    "Minimalist Modern",
+    "Aktif",
+    3
+  ]
+];
   ensureSheetWithData(ss, "Themes", themesHeaders, themesRows);
 
   // 4. Sheet Pricing
@@ -323,12 +379,48 @@ function initDatabase() {
   ensureSheetWithData(ss, "Features", featuresHeaders, featuresRows);
 
   // 6. Sheet Testimonials
-  var testimonialsHeaders = ["ID", "Nama", "Foto", "Testimoni", "Rating", "Status", "Urutan"];
+  var testimonialsHeaders = [
+  "ID",
+  "Nama",
+  "Foto",
+  "Testimoni",
+  "Rating",
+  "Lokasi",
+  "Status",
+  "Urutan"
+];
   var testimonialsRows = [
-    ["TESTI-01", "Dimas & Sarah", "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80", "Pelayanan NGULEMIN cepat banget dan hasilnya sangat elegan. Para tamu banyak yang memuji undangannya karena lagunya bagus dan mudah dibuka di HP!", 5, "Aktif", 1],
-    ["TESTI-02", "Rizky & Amanda", "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80", "Fitur amplop digital dan RSVP-nya ngebantu banget dalam pendataan katering. Desain temanya bener-bener berkelas dan nggak pasaran!", 5, "Aktif", 2],
-    ["TESTI-03", "Budi & Novita", "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80", "Sangat puas dengan paket Premium! Admin sangat ramah membimbing dari pengisian data sampai revisi selesai dalam hitungan jam.", 5, "Aktif", 3]
-  ];
+  [
+    "TESTI-01",
+    "Dimas & Sarah",
+    "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80",
+    "Pelayanan NGULEMIN cepat banget dan hasilnya sangat elegan. Para tamu banyak yang memuji undangannya karena lagunya bagus dan mudah dibuka di HP!",
+    5,
+    "Jakarta Selatan",
+    "Aktif",
+    1
+  ],
+  [
+    "TESTI-02",
+    "Rizky & Amanda",
+    "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80",
+    "Fitur amplop digital dan RSVP-nya ngebantu banget dalam pendataan katering. Desain temanya bener-bener berkelas dan nggak pasaran!",
+    5,
+    "Surabaya",
+    "Aktif",
+    2
+  ],
+  [
+    "TESTI-03",
+    "Budi & Novita",
+    "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80",
+    "Sangat puas dengan paket Premium! Admin sangat ramah membimbing dari pengisian data sampai revisi selesai dalam hitungan jam.",
+    5,
+    "Bandung",
+    "Aktif",
+    3
+  ]
+];
   ensureSheetWithData(ss, "Testimonials", testimonialsHeaders, testimonialsRows);
 
   // 7. Sheet HowToOrder
@@ -597,7 +689,41 @@ function handleLogout(ss, token) {
     }
   }
 }
+function handleUpdateAdminUsername(ss, username) {
+  var cleanUsername = (username || "").toString().trim();
 
+  if (!cleanUsername) {
+    return {
+      success: false,
+      message: "Username admin tidak boleh kosong."
+    };
+  }
+
+  var sheet = ss.getSheetByName("Admin");
+
+  if (!sheet) {
+    return {
+      success: false,
+      message: "Sheet Admin tidak ditemukan."
+    };
+  }
+
+  var data = sheet.getDataRange().getValues();
+
+  if (data.length <= 1) {
+    return {
+      success: false,
+      message: "Akun admin belum diinisialisasi."
+    };
+  }
+
+  sheet.getRange(2, 1).setValue(cleanUsername);
+
+  return {
+    success: true,
+    message: "Username admin berhasil diperbarui."
+  };
+}
 function handleChangePassword(ss, oldPassword, newPassword) {
   if (!newPassword || newPassword.length < 6) {
     return { success: false, message: "Password baru minimal 6 karakter." };
@@ -691,7 +817,40 @@ function updateHomeData(ss, newHome) {
 
   return { success: true, message: "Bagian Home hero berhasil diperbarui." };
 }
+function ensureSheetColumns(ss, sheetName, requiredHeaders) {
+  var sheet = ss.getSheetByName(sheetName);
 
+  if (!sheet) return false;
+
+  var lastColumn = sheet.getLastColumn();
+
+  if (lastColumn < 1) return false;
+
+  var headers = sheet
+    .getRange(1, 1, 1, lastColumn)
+    .getValues()[0]
+    .map(function(header) {
+      return header.toString().trim();
+    });
+
+  for (var i = 0; i < requiredHeaders.length; i++) {
+    var requiredHeader = requiredHeaders[i];
+
+    if (headers.indexOf(requiredHeader) === -1) {
+      var newColumn = sheet.getLastColumn() + 1;
+
+      sheet
+        .getRange(1, newColumn)
+        .setValue(requiredHeader)
+        .setFontWeight("bold")
+        .setBackground("#F4EFEA");
+
+      headers.push(requiredHeader);
+    }
+  }
+
+  return true;
+}
 function createRow(ss, sheetName, itemData, headerOrder) {
   var sheet = ss.getSheetByName(sheetName);
   if (!sheet) return { success: false, message: "Sheet " + sheetName + " tidak ditemukan." };
