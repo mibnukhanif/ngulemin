@@ -2807,7 +2807,7 @@ Catatan: ${orderForm.catatan || '-'}`;
                     </thead>
                     <tbody className="divide-y divide-[#E8E1D9]">
                       {data.orders.map((ord: any) => {
-                        const cleanWa = StringString(ord.whatsapp || '').replace(/[^0-9]/g, '');
+                        const cleanWa = String(ord.whatsapp || '').replace(/[^0-9]/g, '');
                         return (
                           <tr key={ord.id} className="hover:bg-[#FAF8F5]/60 transition-colors">
                             <td className="p-3">
