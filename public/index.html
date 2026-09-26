@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <!-- SEO & Open Graph -->
+  <title>NGULEMIN — Undangan Digital Elegan untuk Momen Istimewa</title>
+  <meta name="description" content="Website profesional penjualan undangan digital elegan, modern, dan eksklusif. Fitur RSVP, Musik, Navigasi Maps, Galeri & Amplop Digital.">
+  <meta property="og:title" content="NGULEMIN — Undangan Digital Elegan">
+  <meta property="og:description" content="Bagikan momen pernikahan berharga Anda dengan undangan digital modern dan romantis.">
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="/assets/images/hero_mockup.jpg">
+
+  <!-- Stylesheet -->
+  <link rel="stylesheet" href="style.css">
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+  <!-- ==================== NAVBAR ==================== -->
+  <header class="navbar">
+    <div class="container navbar-container">
+      <!-- Logo Brand -->
+      <a href="#home" class="nav-brand">
+        <span class="brand-logo-text" id="navbar-brand">NGULEMIN</span>
+      </a>
+
+      <!-- Menu Desktop -->
+      <nav class="nav-menu">
+        <a href="#home" class="nav-link active">Home</a>
+        <a href="#tema" class="nav-link">Tema</a>
+        <a href="#harga" class="nav-link">Harga</a>
+        <a href="#fitur" class="nav-link">Fitur</a>
+        <a href="#testimoni" class="nav-link">Testimoni</a>
+        <a href="#cara-pesan" class="nav-link">Cara Pesan</a>
+        <a href="#faq" class="nav-link">FAQ</a>
+      </nav>
+
+      <!-- Tombol Aksi Kanan -->
+      <div class="nav-actions">
+        <button onclick="openOrderModal()" class="btn btn-primary btn-sm">Pesan Sekarang</button>
+        <button class="hamburger-btn" id="hamburger-btn" aria-label="Buka Menu">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Mobile Drawer Menu -->
+    <div class="mobile-nav" id="mobile-nav">
+      <a href="#home" class="mobile-nav-link">Home</a>
+      <a href="#tema" class="mobile-nav-link">Tema</a>
+      <a href="#harga" class="mobile-nav-link">Harga</a>
+      <a href="#fitur" class="mobile-nav-link">Fitur</a>
+      <a href="#testimoni" class="mobile-nav-link">Testimoni</a>
+      <a href="#cara-pesan" class="mobile-nav-link">Cara Pesan</a>
+      <a href="#faq" class="mobile-nav-link">FAQ</a>
+      <button onclick="openOrderModal()" class="btn btn-primary btn-block" style="margin-top: 10px;">Pesan Sekarang</button>
+      <a href="login.html" class="btn btn-secondary btn-block" style="margin-top: 6px;">Login Admin</a>
+    </div>
+  </header>
+
+  <main>
+    <!-- ==================== HERO SECTION ==================== -->
+    <section class="hero-section" id="home">
+      <div class="container hero-grid">
+        <div class="hero-content">
+          <span class="hero-badge" id="hero-badge">UNDANGAN DIGITAL</span>
+          <h1 class="hero-title" id="hero-title">Bagikan Momen Bahagia dengan Undangan Digital Elegan</h1>
+          <p class="hero-description" id="hero-desc">NGULEMIN membantu Anda membuat undangan digital yang modern, elegan, mudah dibagikan, dan siap digunakan untuk momen istimewa pernikahan Anda.</p>
+          <div class="hero-cta">
+            <a href="#tema" class="btn btn-secondary" id="hero-btn-1">Lihat Tema</a>
+            <button onclick="openOrderModal()" class="btn btn-primary" id="hero-btn-2">Pesan Sekarang</button>
+          </div>
+        </div>
+
+        <div class="hero-visual">
+          <div class="hero-image-wrapper">
+            <img src="/assets/images/hero_mockup.jpg" id="hero-img" alt="Mockup Undangan Digital NGULEMIN" loading="eager">
+          </div>
+          <div class="hero-floating-card">
+            <div class="hero-floating-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+            </div>
+            <div>
+              <div class="hero-floating-title">500+ Pasangan Bahagia</div>
+              <div class="hero-floating-sub">Rating 4.9/5 di Indonesia</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== SECTION TEMA ==================== -->
+    <section class="theme-section" id="tema">
+      <div class="container">
+        <div class="section-header">
+          <span class="section-badge">KATALOG DESAIN</span>
+          <h2 class="section-title">Pilihan Tema Undangan</h2>
+          <p class="section-desc">Temukan desain undangan yang sesuai dengan konsep pernikahan impian Anda. Seluruh tema sudah responsif dan didukung alunan musik romantis.</p>
+        </div>
+
+        <div class="themes-grid" id="themes-container">
+          <!-- Card Tema Dimuat secara dinamis via JavaScript/Spreadsheet -->
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== SECTION HARGA ==================== -->
+    <section class="pricing-section" id="harga">
+      <div class="container">
+        <div class="section-header">
+          <span class="section-badge">INVESTASI TERBAIK</span>
+          <h2 class="section-title">Paket Harga</h2>
+          <p class="section-desc">Pilihan paket fleksibel, transparan, tanpa biaya tersembunyi. Dapatkan fitur eksklusif untuk menyempurnakan hari bahagia Anda.</p>
+        </div>
+
+        <div class="pricing-grid" id="pricing-container">
+          <!-- Data Paket Harga Dimuat secara dinamis -->
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== SECTION FITUR ==================== -->
+    <section class="features-section" id="fitur">
+      <div class="container">
+        <div class="section-header">
+          <span class="section-badge">KEUNGGULAN NGULEMIN</span>
+          <h2 class="section-title">Fitur Undangan Lengkap & Canggih</h2>
+          <p class="section-desc">Semua yang Anda butuhkan untuk kemudahan membagikan undangan dan berinteraksi bersama para tamu tercinta.</p>
+        </div>
+
+        <div class="features-grid" id="features-container">
+          <!-- 12 Fitur dimasukkan secara dinamis -->
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== SECTION TESTIMONI ==================== -->
+    <section class="testimonials-section" id="testimoni">
+      <div class="container">
+        <div class="section-header">
+          <span class="section-badge">CERITA KLIEN</span>
+          <h2 class="section-title">Apa Kata Mereka?</h2>
+          <p class="section-desc">Kebahagiaan para pasangan yang telah mempercayakan pembuatan undangan pernikahan digital bersama NGULEMIN.</p>
+        </div>
+
+        <div class="testimonials-grid" id="testimonials-container">
+          <!-- Card testimoni dimasukkan secara dinamis -->
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== SECTION CARA PESAN ==================== -->
+    <section class="how-section" id="cara-pesan">
+      <div class="container">
+        <div class="section-header">
+          <span class="section-badge">PROSES MUDAH & CEPAT</span>
+          <h2 class="section-title">Cara Pesan</h2>
+          <p class="section-desc">Hanya 4 langkah mudah untuk mewujudkan undangan digital impian Anda tanpa ribet.</p>
+        </div>
+
+        <div class="how-grid" id="how-container">
+          <!-- 4 Langkah Cara Pesan -->
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== SECTION FAQ ==================== -->
+    <section class="faq-section" id="faq">
+      <div class="container">
+        <div class="section-header">
+          <span class="section-badge">PERTANYAAN UMUM</span>
+          <h2 class="section-title">Frequently Asked Questions</h2>
+          <p class="section-desc">Jawaban atas pertanyaan yang paling sering ditanyakan mengenai layanan undangan digital NGULEMIN.</p>
+        </div>
+
+        <div class="faq-list" id="faq-container">
+          <!-- Accordion FAQ -->
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ==================== FOOTER ==================== -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div>
+          <div class="footer-brand-title" id="footer-brand-title">NGULEMIN</div>
+          <p class="footer-desc" id="footer-desc">NGULEMIN adalah layanan undangan digital untuk membantu Anda membagikan momen bahagia dengan cara yang elegan, praktis, dan modern.</p>
+        </div>
+
+        <div>
+          <h4 class="footer-heading">Navigasi</h4>
+          <ul class="footer-links">
+            <li class="footer-link-item"><a href="#home">Home</a></li>
+            <li class="footer-link-item"><a href="#tema">Tema Undangan</a></li>
+            <li class="footer-link-item"><a href="#harga">Paket Harga</a></li>
+            <li class="footer-link-item"><a href="#fitur">Fitur Lengkap</a></li>
+            <li class="footer-link-item"><a href="#cara-pesan">Cara Pesan</a></li>
+            <li class="footer-link-item"><a href="#faq">FAQ</a></li>
+          </ul>
+        </div>
+
+        <div>
+          <h4 class="footer-heading">Hubungi Kami</h4>
+          <ul class="footer-links">
+            <li class="footer-link-item">WhatsApp: <a href="https://wa.me/6281234567890" target="_blank" id="footer-wa">+6281234567890</a></li>
+            <li class="footer-link-item">Instagram: <a href="https://instagram.com/ngulemin.id" target="_blank" id="footer-ig">@ngulemin.id</a></li>
+            <li class="footer-link-item">Email: <a href="mailto:halo@ngulemin.id" id="footer-mail">halo@ngulemin.id</a></li>
+            <li class="footer-link-item" style="margin-top: 10px;">
+              <a href="login.html" style="color: #D4AF37; text-decoration: underline; font-size: 13px;">Login Admin CMS &rarr;</a>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="footer-bottom">
+        <p id="footer-copyright">© 2026 NGULEMIN. All Rights Reserved.</p>
+        <p>Undangan Digital Elegan untuk Momen Istimewa.</p>
+      </div>
+    </div>
+  </footer>
+
+  <!-- ==================== POPUP FORM PEMESANAN ==================== -->
+  <div class="modal-overlay" id="order-modal">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3 class="modal-title">Form Pemesanan Undangan</h3>
+        <button class="modal-close-btn" id="modal-close-btn" aria-label="Tutup Modal">&times;</button>
+      </div>
+
+      <form id="order-form">
+        <div class="modal-body">
+          <div class="form-grid">
+            <div class="form-group">
+              <label class="form-label" for="order-nama">Nama Pemesan *</label>
+              <input type="text" id="order-nama" class="form-input" placeholder="Contoh: Dimas Aditya" required>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="order-whatsapp">Nomor WhatsApp *</label>
+              <input type="tel" id="order-whatsapp" class="form-input" placeholder="Contoh: 081234567890" required>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="order-tema">Pilihan Tema *</label>
+              <select id="order-tema" class="form-select" required>
+                <!-- Opsi tema dimuat dinamis -->
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="order-paket">Paket yang Dipilih *</label>
+              <select id="order-paket" class="form-select" required>
+                <!-- Opsi paket dimuat dinamis -->
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="order-pria">Nama Mempelai Pria *</label>
+              <input type="text" id="order-pria" class="form-input" placeholder="Nama Lengkap Pria" required>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="order-wanita">Nama Mempelai Wanita *</label>
+              <input type="text" id="order-wanita" class="form-input" placeholder="Nama Lengkap Wanita" required>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="order-tanggal">Tanggal Pernikahan *</label>
+              <input type="date" id="order-tanggal" class="form-input" required>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="order-lokasi">Lokasi Pernikahan *</label>
+              <input type="text" id="order-lokasi" class="form-input" placeholder="Contoh: Grand Ballroom Hotel Indonesia" required>
+            </div>
+
+            <div class="form-group full-width">
+              <label class="form-label" for="order-catatan">Catatan Tambahan (Opsional)</label>
+              <textarea id="order-catatan" class="form-textarea" placeholder="Tambahkan permintaan lagu, warna khusus, atau pesan lain jika ada..."></textarea>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="document.getElementById('order-modal').classList.remove('active')">Batal</button>
+          <button type="submit" class="btn btn-primary" id="order-submit-btn">Kirim Pesanan</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="config.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>

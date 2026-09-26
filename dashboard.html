@@ -1,0 +1,832 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin CMS Dashboard — NGULEMIN</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  
+  <style>
+    /* Dashboard Specific Styles */
+    :root {
+      --sidebar-width: 260px;
+    }
+    body {
+      background-color: #F7F5F0;
+      min-height: 100vh;
+      display: flex;
+    }
+    .dash-sidebar {
+      width: var(--sidebar-width);
+      background-color: #24201D;
+      color: #ECE7E1;
+      height: 100vh;
+      position: fixed;
+      top: 0;
+      left: 0;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      z-index: 120;
+      transition: transform 0.3s ease;
+    }
+    .dash-sidebar-header {
+      padding: 24px 20px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .dash-brand {
+      font-family: var(--font-serif);
+      font-size: 24px;
+      font-weight: 700;
+      color: #D4AF37;
+      letter-spacing: 1.5px;
+    }
+    .dash-sidebar-badge {
+      font-size: 11px;
+      background: rgba(212, 175, 55, 0.2);
+      color: #D4AF37;
+      padding: 2px 8px;
+      border-radius: 4px;
+    }
+    .dash-menu {
+      list-style: none;
+      padding: 16px 12px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .dash-menu-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 14px;
+      border-radius: var(--radius-sm);
+      font-size: 14px;
+      font-weight: 500;
+      color: #A9A198;
+      cursor: pointer;
+      transition: var(--transition);
+    }
+    .dash-menu-item:hover, .dash-menu-item.active {
+      background-color: rgba(212, 175, 55, 0.15);
+      color: #FFFFFF;
+    }
+    .dash-menu-item.active {
+      color: #D4AF37;
+      font-weight: 600;
+    }
+    .dash-menu-icon {
+      width: 18px;
+      height: 18px;
+      opacity: 0.8;
+    }
+    .dash-main {
+      margin-left: var(--sidebar-width);
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+    .dash-topbar {
+      height: 64px;
+      background-color: var(--surface-color);
+      border-bottom: 1px solid var(--border-color);
+      padding: 0 30px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 90;
+    }
+    .dash-toggle-btn {
+      display: none;
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 8px;
+    }
+    .dash-content {
+      padding: 30px;
+      flex: 1;
+    }
+    .dash-card {
+      background-color: var(--surface-color);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-lg);
+      padding: 24px;
+      box-shadow: var(--shadow-sm);
+      margin-bottom: 24px;
+    }
+    .dash-card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid var(--border-color);
+    }
+    .dash-card-title {
+      font-family: var(--font-serif);
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--text-color);
+    }
+    /* Stat Cards */
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 16px;
+      margin-bottom: 28px;
+    }
+    .stat-card {
+      background-color: var(--surface-color);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-md);
+      padding: 20px 16px;
+      text-align: center;
+      box-shadow: var(--shadow-sm);
+    }
+    .stat-card-num {
+      font-family: var(--font-serif);
+      font-size: 32px;
+      font-weight: 700;
+      color: var(--primary-color);
+      line-height: 1;
+      margin-bottom: 6px;
+    }
+    .stat-card-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--muted-color);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    /* Tables */
+    .table-responsive {
+      overflow-x: auto;
+    }
+    .dash-table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 14px;
+    }
+    .dash-table th {
+      background-color: var(--surface-alt);
+      padding: 12px 16px;
+      font-weight: 600;
+      color: var(--text-color);
+      border-bottom: 1px solid var(--border-color);
+    }
+    .dash-table td {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border-color);
+      vertical-align: middle;
+    }
+    .dash-table tr:hover td {
+      background-color: #FAF8F5;
+    }
+    .table-thumb {
+      width: 60px;
+      height: 45px;
+      border-radius: 4px;
+      object-fit: cover;
+    }
+    .status-badge {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .status-active {
+      background-color: #DEF7EC;
+      color: #03543F;
+    }
+    .status-inactive {
+      background-color: #FDE8E8;
+      color: #9B1C1C;
+    }
+    /* Tab views */
+    .tab-view {
+      display: none;
+    }
+    .tab-view.active {
+      display: block;
+    }
+
+    @media (max-width: 1024px) {
+      .stat-grid {
+        grid-template-columns: repeat(3, 1fr);
+      }
+    }
+    @media (max-width: 768px) {
+      .dash-sidebar {
+        transform: translateX(-100%);
+      }
+      .dash-sidebar.open {
+        transform: translateX(0);
+      }
+      .dash-main {
+        margin-left: 0;
+      }
+      .dash-toggle-btn {
+        display: block;
+      }
+      .stat-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+      .dash-content {
+        padding: 16px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ==================== SIDEBAR ==================== -->
+  <aside class="dash-sidebar" id="dash-sidebar">
+    <div class="dash-sidebar-header">
+      <div>
+        <div class="dash-brand">NGULEMIN</div>
+        <div style="font-size: 11px; color: #8C847B;">Admin CMS & Kontrol Konten</div>
+      </div>
+      <span class="dash-sidebar-badge">v1.0</span>
+    </div>
+
+    <ul class="dash-menu">
+      <li class="dash-menu-item active" onclick="switchTab('overview')">
+        <svg class="dash-menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        Overview
+      </li>
+      <li class="dash-menu-item" onclick="switchTab('orders')">
+        <svg class="dash-menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+        Pesanan Masuk
+      </li>
+      <li class="dash-menu-item" onclick="switchTab('home')">
+        <svg class="dash-menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+        Home & Hero
+      </li>
+      <li class="dash-menu-item" onclick="switchTab('themes')">
+        <svg class="dash-menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/></svg>
+        Tema Undangan
+      </li>
+      <li class="dash-menu-item" onclick="switchTab('pricing')">
+        <svg class="dash-menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        Paket Harga
+      </li>
+      <li class="dash-menu-item" onclick="switchTab('features')">
+        <svg class="dash-menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        Fitur
+      </li>
+      <li class="dash-menu-item" onclick="switchTab('testimonials')">
+        <svg class="dash-menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        Testimoni
+      </li>
+      <li class="dash-menu-item" onclick="switchTab('howto')">
+        <svg class="dash-menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+        Cara Pesan
+      </li>
+      <li class="dash-menu-item" onclick="switchTab('faq')">
+        <svg class="dash-menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        FAQ
+      </li>
+      <li class="dash-menu-item" onclick="switchTab('footer')">
+        <svg class="dash-menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="16" x2="21" y2="16"/></svg>
+        Footer & Kontak
+      </li>
+      <li class="dash-menu-item" onclick="switchTab('settings')">
+        <svg class="dash-menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        Pengaturan Umum
+      </li>
+      <li class="dash-menu-item" onclick="switchTab('guide')">
+        <svg class="dash-menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+        Panduan & Code.gs
+      </li>
+      <li class="dash-menu-item" style="color: #F87171; margin-top: auto;" onclick="handleLogout()">
+        <svg class="dash-menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        Logout
+      </li>
+    </ul>
+  </aside>
+
+  <!-- ==================== MAIN CONTENT ==================== -->
+  <main class="dash-main">
+    <!-- Topbar -->
+    <header class="dash-topbar">
+      <div style="display: flex; align-items: center; gap: 14px;">
+        <button class="dash-toggle-btn" id="sidebar-toggle" aria-label="Toggle Menu">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        </button>
+        <h2 id="topbar-title" style="font-size: 18px; font-weight: 700;">Overview</h2>
+      </div>
+
+      <div style="display: flex; align-items: center; gap: 14px;">
+        <a href="index.html" target="_blank" class="btn btn-secondary btn-sm">
+          Lihat Website &rarr;
+        </a>
+        <div style="font-size: 13px; font-weight: 600; color: var(--text-color);" id="admin-user-display">
+          Admin
+        </div>
+      </div>
+    </header>
+
+    <div class="dash-content">
+
+      <!-- ==================== TAB 1: OVERVIEW ==================== -->
+      <section id="tab-overview" class="tab-view active">
+        <!-- Stat Cards -->
+        <div class="stat-grid">
+          <div class="stat-card">
+            <div class="stat-card-num" id="stat-themes">3</div>
+            <div class="stat-card-label">Total Tema</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-card-num" id="stat-pricing">3</div>
+            <div class="stat-card-label">Total Paket</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-card-num" id="stat-features">12</div>
+            <div class="stat-card-label">Total Fitur</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-card-num" id="stat-testimonials">3</div>
+            <div class="stat-card-label">Testimoni</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-card-num" id="stat-faq">5</div>
+            <div class="stat-card-label">Total FAQ</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-card-num" id="stat-orders" style="color: #03543F;">1</div>
+            <div class="stat-card-label">Total Pesanan</div>
+          </div>
+        </div>
+
+        <div class="dash-card">
+          <div class="dash-card-header">
+            <h3 class="dash-card-title">Status Sinkronisasi Sistem</h3>
+            <span style="font-size: 12px; color: var(--muted-color);" id="last-updated-text">Data terakhir diperbarui: Baru saja</span>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+            <div style="background-color: var(--surface-alt); padding: 18px; border-radius: var(--radius-sm);">
+              <h4 style="font-size: 14px; font-weight: 700; margin-bottom: 8px;">Koneksi Google Apps Script</h4>
+              <p style="font-size: 13px; color: var(--muted-color); margin-bottom: 12px;" id="api-status-text">
+                Sedang memeriksa koneksi...
+              </p>
+              <button onclick="switchTab('settings')" class="btn btn-secondary btn-sm">Atur API_URL</button>
+            </div>
+
+            <div style="background-color: var(--surface-alt); padding: 18px; border-radius: var(--radius-sm);">
+              <h4 style="font-size: 14px; font-weight: 700; margin-bottom: 8px;">Aksi Cepat</h4>
+              <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                <button onclick="switchTab('orders')" class="btn btn-primary btn-sm">Lihat Pesanan</button>
+                <button onclick="switchTab('themes')" class="btn btn-secondary btn-sm">Tambah Tema</button>
+                <button onclick="switchTab('guide')" class="btn btn-secondary btn-sm">Panduan Code.gs</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== TAB 2: ORDERS ==================== -->
+      <section id="tab-orders" class="tab-view">
+        <div class="dash-card">
+          <div class="dash-card-header">
+            <h3 class="dash-card-title">Daftar Pesanan Tamu</h3>
+            <button onclick="loadOrders()" class="btn btn-secondary btn-sm">Segarkan</button>
+          </div>
+
+          <div class="table-responsive">
+            <table class="dash-table">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Tanggal</th>
+                  <th>Nama Pemesan</th>
+                  <th>WhatsApp</th>
+                  <th>Tema</th>
+                  <th>Mempelai</th>
+                  <th>Paket</th>
+                  <th>Status</th>
+                  <th>Aksi</th>
+                </tr>
+              </thead>
+              <tbody id="orders-table-body">
+                <!-- Data Pesanan -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== TAB 3: HOME ==================== -->
+      <section id="tab-home" class="tab-view">
+        <div class="dash-card">
+          <div class="dash-card-header">
+            <h3 class="dash-card-title">Kelola Home / Hero Section</h3>
+            <button onclick="saveHomeData()" class="btn btn-primary btn-sm">Simpan Perubahan</button>
+          </div>
+
+          <form id="form-home" onsubmit="event.preventDefault(); saveHomeData();">
+            <div class="form-grid">
+              <div class="form-group full-width">
+                <label class="form-label">Badge Atas</label>
+                <input type="text" id="edit-home-badge" class="form-input">
+              </div>
+              <div class="form-group full-width">
+                <label class="form-label">Judul Utama Hero</label>
+                <input type="text" id="edit-home-title" class="form-input">
+              </div>
+              <div class="form-group full-width">
+                <label class="form-label">Deskripsi Hero</label>
+                <textarea id="edit-home-desc" class="form-textarea"></textarea>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Teks Tombol 1</label>
+                <input type="text" id="edit-home-btn1-text" class="form-input">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Link Tombol 1</label>
+                <input type="text" id="edit-home-btn1-link" class="form-input">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Teks Tombol 2</label>
+                <input type="text" id="edit-home-btn2-text" class="form-input">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Link Tombol 2</label>
+                <input type="text" id="edit-home-btn2-link" class="form-input">
+              </div>
+              <div class="form-group full-width">
+                <label class="form-label">URL Gambar Visual Mockup Hero</label>
+                <input type="text" id="edit-home-image" class="form-input">
+              </div>
+            </div>
+            <button type="submit" class="btn btn-primary" style="margin-top: 14px;">Simpan Perubahan Home</button>
+          </form>
+        </div>
+      </section>
+
+      <!-- ==================== TAB 4: THEMES ==================== -->
+      <section id="tab-themes" class="tab-view">
+        <div class="dash-card">
+          <div class="dash-card-header">
+            <h3 class="dash-card-title">Daftar Tema Undangan</h3>
+            <button onclick="openThemeModal()" class="btn btn-primary btn-sm">+ Tambah Tema</button>
+          </div>
+
+          <div class="table-responsive">
+            <table class="dash-table">
+              <thead>
+                <tr>
+                  <th>Gambar</th>
+                  <th>Nama Tema</th>
+                  <th>Harga</th>
+                  <th>Preview</th>
+                  <th>Status</th>
+                  <th>Aksi</th>
+                </tr>
+              </thead>
+              <tbody id="themes-table-body">
+                <!-- Rows dinamis -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== TAB 5: PRICING ==================== -->
+      <section id="tab-pricing" class="tab-view">
+        <div class="dash-card">
+          <div class="dash-card-header">
+            <h3 class="dash-card-title">Kelola Paket Harga</h3>
+            <button onclick="openPricingModal()" class="btn btn-primary btn-sm">+ Tambah Paket</button>
+          </div>
+
+          <div class="table-responsive">
+            <table class="dash-table">
+              <thead>
+                <tr>
+                  <th>Nama Paket</th>
+                  <th>Harga</th>
+                  <th>Label</th>
+                  <th>Featured</th>
+                  <th>Status</th>
+                  <th>Aksi</th>
+                </tr>
+              </thead>
+              <tbody id="pricing-table-body">
+                <!-- Rows dinamis -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== TAB 6: FEATURES ==================== -->
+      <section id="tab-features" class="tab-view">
+        <div class="dash-card">
+          <div class="dash-card-header">
+            <h3 class="dash-card-title">Daftar Fitur Undangan</h3>
+            <button onclick="openFeatureModal()" class="btn btn-primary btn-sm">+ Tambah Fitur</button>
+          </div>
+
+          <div class="table-responsive">
+            <table class="dash-table">
+              <thead>
+                <tr>
+                  <th>Icon</th>
+                  <th>Judul Fitur</th>
+                  <th>Deskripsi</th>
+                  <th>Status</th>
+                  <th>Aksi</th>
+                </tr>
+              </thead>
+              <tbody id="features-table-body">
+                <!-- Rows dinamis -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== TAB 7: TESTIMONIALS ==================== -->
+      <section id="tab-testimonials" class="tab-view">
+        <div class="dash-card">
+          <div class="dash-card-header">
+            <h3 class="dash-card-title">Testimoni Klien</h3>
+            <button onclick="openTestiModal()" class="btn btn-primary btn-sm">+ Tambah Testimoni</button>
+          </div>
+
+          <div class="table-responsive">
+            <table class="dash-table">
+              <thead>
+                <tr>
+                  <th>Nama</th>
+                  <th>Testimoni</th>
+                  <th>Rating</th>
+                  <th>Status</th>
+                  <th>Aksi</th>
+                </tr>
+              </thead>
+              <tbody id="testi-table-body">
+                <!-- Rows dinamis -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== TAB 8: HOW TO ORDER ==================== -->
+      <section id="tab-howto" class="tab-view">
+        <div class="dash-card">
+          <div class="dash-card-header">
+            <h3 class="dash-card-title">Langkah Cara Pesan</h3>
+            <button onclick="openHowModal()" class="btn btn-primary btn-sm">+ Tambah Langkah</button>
+          </div>
+
+          <div class="table-responsive">
+            <table class="dash-table">
+              <thead>
+                <tr>
+                  <th>Nomor</th>
+                  <th>Judul Langkah</th>
+                  <th>Deskripsi</th>
+                  <th>Aksi</th>
+                </tr>
+              </thead>
+              <tbody id="howto-table-body">
+                <!-- Rows dinamis -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== TAB 9: FAQ ==================== -->
+      <section id="tab-faq" class="tab-view">
+        <div class="dash-card">
+          <div class="dash-card-header">
+            <h3 class="dash-card-title">Daftar FAQ (Pertanyaan Umum)</h3>
+            <button onclick="openFaqModal()" class="btn btn-primary btn-sm">+ Tambah FAQ</button>
+          </div>
+
+          <div class="table-responsive">
+            <table class="dash-table">
+              <thead>
+                <tr>
+                  <th>Pertanyaan</th>
+                  <th>Jawaban</th>
+                  <th>Aksi</th>
+                </tr>
+              </thead>
+              <tbody id="faq-table-body">
+                <!-- Rows dinamis -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== TAB 10: FOOTER & SETTINGS ==================== -->
+      <section id="tab-footer" class="tab-view">
+        <div class="dash-card">
+          <div class="dash-card-header">
+            <h3 class="dash-card-title">Footer & Kontak Bisnis</h3>
+            <button onclick="saveFooterData()" class="btn btn-primary btn-sm">Simpan Footer</button>
+          </div>
+
+          <form id="form-footer" onsubmit="event.preventDefault(); saveFooterData();">
+            <div class="form-grid">
+              <div class="form-group full-width">
+                <label class="form-label">Deskripsi Singkat Footer</label>
+                <textarea id="edit-footer-desc" class="form-textarea"></textarea>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Nomor WhatsApp Admin</label>
+                <input type="text" id="edit-footer-wa" class="form-input" placeholder="6281234567890">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Akun Instagram</label>
+                <input type="text" id="edit-footer-ig" class="form-input" placeholder="ngulemin.id">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Email Support</label>
+                <input type="email" id="edit-footer-mail" class="form-input" placeholder="halo@ngulemin.id">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Teks Copyright</label>
+                <input type="text" id="edit-footer-copy" class="form-input">
+              </div>
+            </div>
+            <button type="submit" class="btn btn-primary" style="margin-top: 14px;">Simpan Footer</button>
+          </form>
+        </div>
+      </section>
+
+      <!-- ==================== TAB 11: SETTINGS ==================== -->
+      <section id="tab-settings" class="tab-view">
+        <div class="dash-card">
+          <div class="dash-card-header">
+            <h3 class="dash-card-title">Pengaturan Umum & Koneksi API</h3>
+            <button onclick="saveSettingsData()" class="btn btn-primary btn-sm">Simpan Pengaturan</button>
+          </div>
+
+          <form id="form-settings" onsubmit="event.preventDefault(); saveSettingsData();">
+            <div class="form-grid">
+              <div class="form-group full-width">
+                <label class="form-label">URL Web App Google Apps Script (API_URL)</label>
+                <input type="text" id="edit-setting-api-url" class="form-input" placeholder="https://script.google.com/macros/s/.../exec">
+                <small style="color: var(--muted-color); font-size: 12px; margin-top: 4px; display: block;">
+                  Dapatkan URL ini setelah menerapkan (Deploy) Code.gs di Google Apps Script Anda.
+                </small>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Nama Website</label>
+                <input type="text" id="edit-setting-name" class="form-input" value="NGULEMIN">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Tagline Website</label>
+                <input type="text" id="edit-setting-tagline" class="form-input">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Warna Utama (Primary Color)</label>
+                <input type="color" id="edit-setting-color-primary" style="height: 42px; width: 100%; border: 1px solid var(--border-color); border-radius: var(--radius-sm);">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Warna Sekunder (Secondary Color)</label>
+                <input type="color" id="edit-setting-color-secondary" style="height: 42px; width: 100%; border: 1px solid var(--border-color); border-radius: var(--radius-sm);">
+              </div>
+              <div class="form-group full-width">
+                <label class="form-label">Meta Title (SEO)</label>
+                <input type="text" id="edit-setting-meta-title" class="form-input">
+              </div>
+              <div class="form-group full-width">
+                <label class="form-label">Meta Description (SEO)</label>
+                <textarea id="edit-setting-meta-desc" class="form-textarea"></textarea>
+              </div>
+            </div>
+            <button type="submit" class="btn btn-primary" style="margin-top: 14px;">Simpan Pengaturan</button>
+          </form>
+        </div>
+
+        <!-- Ganti Password -->
+        <div class="dash-card">
+          <div class="dash-card-header">
+            <h3 class="dash-card-title">Keamanan Admin (Ganti Password)</h3>
+          </div>
+          <form id="form-change-pass" onsubmit="event.preventDefault(); handleChangePassword();">
+            <div class="form-grid">
+              <div class="form-group">
+                <label class="form-label">Password Lama</label>
+                <input type="password" id="pass-old" class="form-input" required>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Password Baru (Min. 6 Karakter)</label>
+                <input type="password" id="pass-new" class="form-input" required>
+              </div>
+            </div>
+            <button type="submit" class="btn btn-secondary">Perbarui Password</button>
+          </form>
+        </div>
+      </section>
+
+      <!-- ==================== TAB 12: GUIDE & CODE.GS ==================== -->
+      <section id="tab-guide" class="tab-view">
+        <div class="dash-card">
+          <div class="dash-card-header">
+            <h3 class="dash-card-title">Panduan Pemasangan & Deploy</h3>
+          </div>
+          <div style="font-size: 14px; line-height: 1.8; color: var(--text-color);">
+            <h4 style="font-size: 16px; margin: 16px 0 8px 0; color: var(--primary-color);">1. Langkah Pasang Google Spreadsheet & Apps Script:</h4>
+            <ol style="padding-left: 20px;">
+              <li>Buka <a href="https://sheets.new" target="_blank" style="color: var(--primary-color); text-decoration: underline;">Google Sheets</a> dan buat spreadsheet baru dengan nama <strong>Database NGULEMIN</strong>.</li>
+              <li>Klik menu <strong>Ekstensi &gt; Apps Script</strong>.</li>
+              <li>Buka file <code>Code.gs</code> di project ini (atau salin dari textarea di bawah).</li>
+              <li>Jalankan fungsi <code>initDatabase</code> satu kali untuk membuat seluruh sheet otomatis.</li>
+              <li>Klik tombol <strong>Deploy &gt; New deployment</strong>, pilih <strong>Web app</strong>, atur <em>Who has access</em> ke <strong>Anyone</strong>, lalu salin URL Web App yang berakhiran <code>/exec</code>.</li>
+              <li>Paste URL tersebut ke tab <strong>Pengaturan Umum</strong> di atas atau ke <code>config.js</code>.</li>
+            </ol>
+
+            <h4 style="font-size: 16px; margin: 24px 0 8px 0; color: var(--primary-color);">2. Langkah Deploy Frontend ke Netlify / Vercel:</h4>
+            <ul style="padding-left: 20px;">
+              <li><strong>Netlify:</strong> Buka app.netlify.com, drag and drop folder project ini ke Netlify Drop, website langsung live dalam 1 menit!</li>
+              <li><strong>Vercel:</strong> Hubungkan repositori GitHub Anda ke Vercel atau gunakan perintah <code>vercel deploy</code>.</li>
+            </ul>
+
+            <h4 style="font-size: 16px; margin: 24px 0 8px 0; color: var(--primary-color);">3. Salin Kode Code.gs:</h4>
+            <textarea id="code-gs-text" style="width: 100%; height: 260px; font-family: monospace; font-size: 12px; padding: 12px; border: 1px solid var(--border-color); background: #FAF8F5; border-radius: var(--radius-sm);" readonly></textarea>
+            <button onclick="copyCodeGs()" class="btn btn-secondary btn-sm" style="margin-top: 8px;">Salin Seluruh Kode Code.gs</button>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <!-- ==================== MODAL FORM THEME ==================== -->
+  <div class="modal-overlay" id="theme-modal">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3 class="modal-title" id="theme-modal-title">Tambah Tema Baru</h3>
+        <button class="modal-close-btn" onclick="closeThemeModal()">&times;</button>
+      </div>
+      <form id="form-modal-theme" onsubmit="event.preventDefault(); submitThemeForm();">
+        <div class="modal-body">
+          <input type="hidden" id="theme-form-id">
+          <div class="form-grid">
+            <div class="form-group full-width">
+              <label class="form-label">Nama Tema *</label>
+              <input type="text" id="theme-form-nama" class="form-input" required>
+            </div>
+            <div class="form-group full-width">
+              <label class="form-label">URL Gambar Sampul *</label>
+              <input type="text" id="theme-form-gambar" class="form-input" required placeholder="/assets/images/theme_rose.jpg">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Harga (Rp) *</label>
+              <input type="number" id="theme-form-harga" class="form-input" required value="99000">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Status</label>
+              <select id="theme-form-status" class="form-select">
+                <option value="Aktif">Aktif</option>
+                <option value="Nonaktif">Nonaktif</option>
+              </select>
+            </div>
+            <div class="form-group full-width">
+              <label class="form-label">Link Demo Preview</label>
+              <input type="url" id="theme-form-preview" class="form-input" placeholder="https://ngulemin.id/preview/demo">
+            </div>
+            <div class="form-group full-width">
+              <label class="form-label">Deskripsi Tema</label>
+              <textarea id="theme-form-desc" class="form-textarea"></textarea>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeThemeModal()">Batal</button>
+          <button type="submit" class="btn btn-primary" id="theme-modal-submit-btn">Simpan Tema</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="toast-container" class="toast-container"></div>
+
+  <!-- Scripts -->
+  <script src="config.js"></script>
+  <script src="dashboard.js"></script>
+</body>
+</html>

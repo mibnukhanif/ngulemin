@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login Admin — NGULEMIN</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    .login-wrapper {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      background: radial-gradient(circle at top right, #F5EFEB 0%, #FAF8F5 60%, #EFE9E2 100%);
+    }
+    .login-card {
+      width: 100%;
+      max-width: 440px;
+      background-color: var(--surface-color);
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--border-color);
+      box-shadow: var(--shadow-lg);
+      padding: 42px 36px;
+    }
+    .login-logo {
+      text-align: center;
+      margin-bottom: 28px;
+    }
+    .login-brand {
+      font-family: var(--font-serif);
+      font-size: 32px;
+      font-weight: 700;
+      color: var(--primary-color);
+      letter-spacing: 2px;
+    }
+    .login-sub {
+      font-size: 13px;
+      color: var(--muted-color);
+      margin-top: 4px;
+    }
+    .alert-box {
+      padding: 12px 14px;
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      margin-bottom: 20px;
+      display: none;
+    }
+    .alert-error {
+      background-color: #FDF2F2;
+      color: #991B1B;
+      border: 1px solid #F87171;
+    }
+    .alert-info {
+      background-color: #F4EFEA;
+      color: var(--text-color);
+      border: 1px solid var(--border-color);
+      display: block;
+      margin-top: 24px;
+      font-size: 12px;
+      line-height: 1.6;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="login-wrapper">
+    <div class="login-card">
+      <div class="login-logo">
+        <a href="index.html" class="login-brand">NGULEMIN</a>
+        <p class="login-sub">Panel Administrasi & Pengelolaan Konten</p>
+      </div>
+
+      <div id="alert-error" class="alert-box alert-error"></div>
+
+      <form id="login-form">
+        <div class="form-group">
+          <label class="form-label" for="username">Username / Email</label>
+          <input type="text" id="username" class="form-input" placeholder="Masukkan username" required autocomplete="username">
+        </div>
+
+        <div class="form-group" style="margin-bottom: 24px;">
+          <label class="form-label" for="password">Password</label>
+          <input type="password" id="password" class="form-input" placeholder="Masukkan password" required autocomplete="current-password">
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-block" id="btn-login">
+          Masuk ke Dashboard
+        </button>
+      </form>
+
+      <div class="alert-info">
+        <strong>Informasi Kredensial Awal:</strong><br>
+        Username: <code>admin</code><br>
+        Password: <code>admin123</code><br>
+        <span style="color: var(--muted-color);">Password dapat diubah kapan saja di menu Pengaturan Dashboard.</span>
+      </div>
+
+      <div style="text-align: center; margin-top: 24px;">
+        <a href="index.html" style="font-size: 13px; color: var(--primary-color); text-decoration: underline;">
+          &larr; Kembali ke Website Utama
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <script src="config.js"></script>
+  <script>
+    // Cek jika sudah memiliki token aktif
+    const existingToken = localStorage.getItem('ngulemin_admin_token');
+    if (existingToken) {
+      window.location.href = 'dashboard.html';
+    }
+
+    const form = document.getElementById('login-form');
+    const alertError = document.getElementById('alert-error');
+    const btnLogin = document.getElementById('btn-login');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      alertError.style.display = 'none';
+
+      const username = document.getElementById('username').value.trim();
+      const password = document.getElementById('password').value.trim();
+
+      btnLogin.disabled = true;
+      btnLogin.textContent = "Memverifikasi...";
+
+      const apiUrl = (window.CONFIG && window.CONFIG.API_URL) ? window.CONFIG.API_URL.trim() : "";
+
+      // 1. Jika terhubung ke Google Apps Script API
+      if (apiUrl && apiUrl.startsWith('http')) {
+        try {
+          const response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({
+              action: 'login',
+              username: username,
+              password: password
+            })
+          });
+          const result = await response.json();
+          if (result.success && result.data && result.data.token) {
+            localStorage.setItem('ngulemin_admin_token', result.data.token);
+            localStorage.setItem('ngulemin_admin_user', result.data.username);
+            window.location.href = 'dashboard.html';
+            return;
+          } else {
+            showError(result.message || "Username atau password salah.");
+          }
+        } catch (err) {
+          console.warn("Gagal menghubungi Google Apps Script, mencoba fallback offline:", err);
+          checkLocalFallback(username, password);
+        }
+      } else {
+        // 2. Fallback Demo Offline / Lokal
+        checkLocalFallback(username, password);
+      }
+    });
+
+    function checkLocalFallback(username, password) {
+      // Kredensial default
+      const storedUser = localStorage.getItem('ngulemin_local_admin_user') || 'admin';
+      const storedPass = localStorage.getItem('ngulemin_local_admin_pass') || 'admin123';
+
+      if (username === storedUser && password === storedPass) {
+        const dummyToken = "NGU_LOCAL_" + Date.now();
+        localStorage.setItem('ngulemin_admin_token', dummyToken);
+        localStorage.setItem('ngulemin_admin_user', username);
+        window.location.href = 'dashboard.html';
+      } else {
+        showError("Username atau password salah. Coba: admin / admin123");
+      }
+    }
+
+    function showError(msg) {
+      alertError.textContent = msg;
+      alertError.style.display = 'block';
+      btnLogin.disabled = false;
+      btnLogin.textContent = "Masuk ke Dashboard";
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,8 @@
+{
+  "name": "NGULEMIN — Undangan Digital Elegan",
+  "description": "Website profesional untuk penjualan undangan digital elegan, modern, dan praktis dengan integrasi Google Apps Script dan Google Spreadsheet.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
