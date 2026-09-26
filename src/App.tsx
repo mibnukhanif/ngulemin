@@ -70,7 +70,10 @@ const INITIAL_DATA = {
     accentColor: "#D4AF37",
     metaTitle: "NGULEMIN — Undangan Digital Elegan untuk Momen Istimewa",
     metaDescription: "Buat undangan pernikahan digital modern, responsive, dan eksklusif dengan fitur lengkap RSVP, Maps, Musik & Amplop Digital.",
-    apiUrl: ((import.meta as any).env?.VITE_API_URL as string) || ""
+    apiUrl:
+      ((import.meta as any).env?.VITE_API_URL as string) ||
+      ((window as any).CONFIG?.API_URL as string) ||
+      ""
   },
   categories: [
     "Floral & Romantic",
@@ -357,8 +360,42 @@ const normalizeApiData = (apiData: any, currentData: any) => {
         })
       : currentData.themes,
 
+    categories: Array.from(
+      new Set([
+        ...(currentData.categories || []),
+        ...(Array.isArray(apiData.themes)
+          ? apiData.themes
+              .map((theme: any) => theme.Category)
+              .filter((category: any) =>
+                typeof category === "string" && category.trim() !== ""
+              )
+          : [])
+      ])
+    ),
+
     pricing: Array.isArray(apiData.pricing)
-      ? apiData.pricing
+      ? apiData.pricing.map((pkg: any) => ({
+          ID: pkg.ID ?? pkg.id ?? "",
+          Nama: pkg.Nama ?? pkg.name ?? "",
+          Harga: Number(pkg.Harga ?? pkg.price ?? 0),
+          Deskripsi: pkg.Deskripsi ?? pkg.description ?? "",
+          Fitur: Array.isArray(pkg.Fitur)
+            ? pkg.Fitur
+            : (pkg.Fitur || "")
+                .toString()
+                .split("\n")
+                .map((item: string) => item.trim())
+                .filter(Boolean),
+          Label: pkg.Label ?? pkg.label ?? "",
+          Featured:
+            typeof pkg.Featured === "boolean"
+              ? pkg.Featured
+              : ["ya", "true", "1", "yes"].includes(
+                  String(pkg.Featured ?? "").trim().toLowerCase()
+                ),
+          Status: pkg.Status ?? pkg.status ?? "Aktif",
+          Urutan: Number(pkg.Urutan ?? pkg.order ?? 0)
+        }))
       : currentData.pricing,
 
     features: Array.isArray(apiData.features)
@@ -703,12 +740,19 @@ useEffect(() => {
   let cancelled = false;
 
   const loadOrders = async () => {
+    const apiUrl = (
+      data.settings.apiUrl ||
+      getConfiguredApiUrl()
+    ).trim();
+
+    if (!apiUrl) return;
+
     try {
-      const result = await callApi(
-        "getOrders",
-        {},
-        true
+      const response = await fetch(
+        `${apiUrl}?action=getOrders&token=${encodeURIComponent(adminToken)}`
       );
+
+      const result = await response.json();
 
       if (!cancelled && result.success) {
         const orders = Array.isArray(result.data)
@@ -776,7 +820,7 @@ useEffect(() => {
   return () => {
     cancelled = true;
   };
-}, [adminToken]);
+}, [adminToken, data.settings.apiUrl]);
 
 const updateOrderStatus = (
   orderId: string,
@@ -838,12 +882,18 @@ const savePricing = async () => {
     Urutan: 1
   };
 
+  const apiPkg = {
+    ...finalPkg,
+    Fitur: finalPkg.Fitur.join("\n"),
+    Featured: finalPkg.Featured ? "Ya" : "Tidak"
+  };
+
   try {
     await callApi(
       pricingModal.isEdit
         ? "updatePricing"
         : "createPricing",
-      { data: finalPkg }
+      { data: apiPkg }
     );
 
     setData((prev: typeof INITIAL_DATA) => ({
@@ -1178,7 +1228,12 @@ const saveAdminUsername = async () => {
     e.preventDefault();
 
     const newOrder = {
-      id: "ORD-" + new Date().getFullYear() + ("0" + (new Date().getMonth() + 1)).slice(-2) + "-" + Math.floor(100 + Math.random() * 900),
+      id:
+        "ORD-" +
+        new Date().getFullYear() +
+        ("0" + (new Date().getMonth() + 1)).slice(-2) +
+        "-" +
+        Math.floor(100 + Math.random() * 900),
       date: new Date().toISOString().replace('T', ' ').slice(0, 16),
       customerName: orderForm.nama,
       whatsapp: orderForm.whatsapp,
@@ -1192,25 +1247,30 @@ const saveAdminUsername = async () => {
       status: "Baru"
     };
 
-    // Update state & persist orders
-    setData((prev: typeof INITIAL_DATA) => ({
-      ...prev,
-      orders: [newOrder, ...prev.orders]
-    }));
+    try {
+      const apiResult = await callApi(
+        "createOrder",
+        { data: newOrder },
+        false
+      );
 
-    // If API URL is provided, try POST to Google Apps Script
-    if (data.settings.apiUrl && data.settings.apiUrl.startsWith('http')) {
-      try {
-        fetch(data.settings.apiUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({ action: 'createOrder', data: newOrder })
-        }).catch(err => console.warn("Sync Google Apps Script warning:", err));
-      } catch (err) {}
-    }
+      const backendOrderId =
+        apiResult.data?.orderId || newOrder.id;
+      const backendDate =
+        apiResult.data?.tanggal || newOrder.date;
 
-    // Format WhatsApp message
-    const waText = 
+      const savedOrder = {
+        ...newOrder,
+        id: backendOrderId,
+        date: backendDate
+      };
+
+      setData((prev: typeof INITIAL_DATA) => ({
+        ...prev,
+        orders: [savedOrder, ...prev.orders]
+      }));
+
+      const waText =
 `Halo NGULEMIN, saya ingin memesan undangan digital.
 
 Nama: ${orderForm.nama}
@@ -1223,12 +1283,23 @@ Lokasi: ${orderForm.lokasi}
 Paket: ${orderForm.paket}
 Catatan: ${orderForm.catatan || '-'}`;
 
-    const adminPhone = (data.settings.whatsappAdmin || "6281234567890").replace(/[^0-9]/g, '');
-    const waUrl = `https://wa.me/${adminPhone}?text=${encodeURIComponent(waText)}`;
-    setLastGeneratedWaUrl(waUrl);
+      const adminPhone = (
+        data.settings.whatsappAdmin ||
+        "6281234567890"
+      ).replace(/[^0-9]/g, '');
 
-    setOrderSubmittedSuccess(true);
-    triggerToast("Pesanan berhasil dicatat!");
+      const waUrl = `https://wa.me/${adminPhone}?text=${encodeURIComponent(waText)}`;
+      setLastGeneratedWaUrl(waUrl);
+
+      setOrderSubmittedSuccess(true);
+      triggerToast("Pesanan berhasil disimpan ke Spreadsheet!");
+    } catch (error: any) {
+      console.error("Create Order Error:", error);
+      triggerToast(
+        error.message ||
+        "Gagal menyimpan pesanan ke Spreadsheet."
+      );
+    }
   };
 
   const openOrderWithTheme = (themeName: string) => {
@@ -2875,6 +2946,7 @@ const handleLogin = async (e: React.FormEvent) => {
                                           },
                                           "Tema berhasil dihapus dari Spreadsheet."
                                         );
+                                      });
                                     }}
                                     className="p-1.5 text-xs text-red-600 hover:bg-red-50 rounded-lg border border-red-200 transition-colors cursor-pointer"
                                     title="Hapus Tema"
@@ -2982,6 +3054,7 @@ const handleLogin = async (e: React.FormEvent) => {
                                   },
                                   "Paket berhasil dihapus dari Spreadsheet."
                                 );
+                              });
                             }}
                             className="text-xs text-red-600 hover:underline flex items-center gap-1"
                           >
@@ -3057,6 +3130,7 @@ const handleLogin = async (e: React.FormEvent) => {
                                 },
                                 "Fitur berhasil dihapus dari Spreadsheet."
                               );
+                            });
                           }}
                           className="text-red-500 hover:text-red-700 p-1"
                           title="Hapus Fitur"
@@ -3135,6 +3209,7 @@ const handleLogin = async (e: React.FormEvent) => {
                                 },
                                 "Testimoni berhasil dihapus dari Spreadsheet."
                               );
+                            });
                           }}
                           className="text-red-500 hover:text-red-700 p-1"
                           title="Hapus Testimoni"
@@ -3260,6 +3335,7 @@ const handleLogin = async (e: React.FormEvent) => {
                                 },
                                 "FAQ berhasil dihapus dari Spreadsheet."
                               );
+                            });
                           }}
                           className="text-red-500 hover:text-red-700 p-1"
                           title="Hapus FAQ"
@@ -3890,95 +3966,47 @@ const handleLogin = async (e: React.FormEvent) => {
               onSubmit={async (e) => {
                 e.preventDefault();
                 const d = themeModal.data;
+
                 if (!d.Nama.trim()) {
                   triggerToast("Nama tema tidak boleh kosong");
                   return;
                 }
-                if (themeModal.isEdit) {
-  try {
-    const apiUrl =
-      (data.settings.apiUrl ||
-        ((window as any).CONFIG?.API_URL as string) ||
-        "").trim();
 
-    if (!apiUrl) {
-      throw new Error("URL Google Apps Script belum tersedia.");
-    }
+                try {
+                  await callApi(
+                    themeModal.isEdit
+                      ? "updateTheme"
+                      : "createTheme",
+                    { data: d },
+                    true
+                  );
 
-    const response = await fetch(apiUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "text/plain;charset=utf-8"
-      },
-      body: JSON.stringify({
-  action: "updateTheme",
-  token: adminToken,
-  data: d
-})
-    });
+                  setData((prev: typeof INITIAL_DATA) => ({
+                    ...prev,
+                    themes: themeModal.isEdit
+                      ? prev.themes.map((theme: any) =>
+                          theme.ID === d.ID ? d : theme
+                        )
+                      : [...prev.themes, d]
+                  }));
 
-    const result = await response.json();
+                  setThemeModal(prev => ({
+                    ...prev,
+                    open: false
+                  }));
 
-    if (!result.success) {
-      throw new Error(result.message || "Gagal memperbarui tema.");
-    }
-
-    setData((prev: typeof INITIAL_DATA) => ({
-      ...prev,
-      themes: prev.themes.map((t: any) =>
-        t.ID === d.ID ? d : t
-      )
-    }));
-
-    triggerToast("Tema berhasil diperbarui di Spreadsheet!");
-  } catch (error: any) {
-    console.error("Update Theme Error:", error);
-    triggerToast(error.message || "Gagal memperbarui tema.");
-    return;
-  }
-} else {
-  try {
-    const apiUrl =
-      (data.settings.apiUrl ||
-        ((window as any).CONFIG?.API_URL as string) ||
-        "").trim();
-
-    if (!apiUrl) {
-      throw new Error("URL Google Apps Script belum tersedia.");
-    }
-
-    const response = await fetch(apiUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "text/plain;charset=utf-8"
-      },
-      body: JSON.stringify({
-  action: "createTheme",
-  token: adminToken,
-  data: d
-})
-    });
-
-    const result = await response.json();
-
-    if (!result.success) {
-      throw new Error(result.message || "Gagal menambahkan tema.");
-    }
-
-    setData((prev: typeof INITIAL_DATA) => ({
-      ...prev,
-      themes: [...prev.themes, d]
-    }));
-
-    triggerToast("Tema baru berhasil ditambahkan ke Spreadsheet!");
-  } catch (error: any) {
-    console.error("Create Theme Error:", error);
-    triggerToast(error.message || "Gagal menambahkan tema.");
-    return;
-  }
-}
-
-setThemeModal(prev => ({ ...prev, open: false }));
+                  triggerToast(
+                    themeModal.isEdit
+                      ? "Tema berhasil diperbarui di Spreadsheet!"
+                      : "Tema baru berhasil ditambahkan ke Spreadsheet!"
+                  );
+                } catch (error: any) {
+                  console.error("Theme API Error:", error);
+                  triggerToast(
+                    error.message ||
+                    "Gagal menyimpan tema ke Spreadsheet."
+                  );
+                }
               }}
               className="p-5 sm:p-6 space-y-4 text-xs"
             >
@@ -4108,11 +4136,10 @@ setThemeModal(prev => ({ ...prev, open: false }));
             </div>
 
             <form
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  void savePricing();
-                }}
+              onSubmit={(e) => {
+                e.preventDefault();
+                void savePricing();
+              }}
               className="p-5 sm:p-6 space-y-4 text-xs"
             >
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
