@@ -330,11 +330,54 @@ const normalizeApiData = (apiData: any, currentData: any) => {
     settings: {
       ...currentData.settings,
       ...(apiData.settings || {}),
-      apiUrl: (
-        apiData.settings?.apiUrl ||
-        currentData.settings?.apiUrl ||
+
+      siteName: String(
+        apiData.settings?.siteName ??
+        currentData.settings?.siteName ??
+        "NGULEMIN"
+      ),
+
+      tagline: String(
+        apiData.settings?.tagline ??
+        currentData.settings?.tagline ??
+        ""
+      ),
+
+      whatsappAdmin: String(
+        apiData.settings?.whatsappAdmin ??
+        currentData.settings?.whatsappAdmin ??
+        "6281234567890"
+      ),
+
+      emailAdmin: String(
+        apiData.settings?.emailAdmin ??
+        currentData.settings?.emailAdmin ??
+        ""
+      ),
+
+      instagramAdmin: String(
+        apiData.settings?.instagramAdmin ??
+        currentData.settings?.instagramAdmin ??
+        ""
+      ),
+
+      footerDescription: String(
+        apiData.settings?.footerDescription ??
+        currentData.settings?.footerDescription ??
+        ""
+      ),
+
+      copyrightText: String(
+        apiData.settings?.copyrightText ??
+        currentData.settings?.copyrightText ??
+        ""
+      ),
+
+      apiUrl: String(
+        apiData.settings?.apiUrl ??
+        currentData.settings?.apiUrl ??
         getConfiguredApiUrl()
-      ).toString().trim()
+      ).trim()
     },
 
     home: {
@@ -1283,7 +1326,7 @@ Lokasi: ${orderForm.lokasi}
 Paket: ${orderForm.paket}
 Catatan: ${orderForm.catatan || '-'}`;
 
-      const adminPhone = (
+      const adminPhone = String(
         data.settings.whatsappAdmin ||
         "6281234567890"
       ).replace(/[^0-9]/g, '');
@@ -2545,7 +2588,7 @@ const handleLogin = async (e: React.FormEvent) => {
                     </thead>
                     <tbody className="divide-y divide-[#E8E1D9]">
                       {data.orders.map((ord: any) => {
-                        const cleanWa = (ord.whatsapp || '').replace(/[^0-9]/g, '');
+                        const cleanWa = String(ord.whatsapp || '').replace(/[^0-9]/g, '');
                         return (
                           <tr key={ord.id} className="hover:bg-[#FAF8F5]/60 transition-colors">
                             <td className="p-3">
@@ -3719,7 +3762,7 @@ const handleLogin = async (e: React.FormEvent) => {
                 <h4 className="text-xs font-bold uppercase tracking-widest text-white mb-4">Kontak & Pemesanan</h4>
                 <ul className="space-y-2 text-xs text-[#A9A198]">
                   <li>
-                    WhatsApp: <a href={`https://wa.me/${data.settings.whatsappAdmin.replace(/[^0-9]/g, '')}`} target="_blank" rel="noreferrer" className="text-white hover:text-[#D4AF37]">+{data.settings.whatsappAdmin}</a>
+                    WhatsApp: <a href={`https://wa.me/${String(data.settings.whatsappAdmin || '').replace(/[^0-9]/g, '')}`} target="_blank" rel="noreferrer" className="text-white hover:text-[#D4AF37]">+{String(data.settings.whatsappAdmin || '')}</a>
                   </li>
                   <li>
                     Instagram: <a href={`https://instagram.com/${data.settings.instagramAdmin}`} target="_blank" rel="noreferrer" className="text-white hover:text-[#D4AF37]">@{data.settings.instagramAdmin}</a>
