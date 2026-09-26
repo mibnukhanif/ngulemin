@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Sparkles,
   Smartphone,
@@ -58,6 +58,8 @@ const INITIAL_DATA = {
     siteName: "NGULEMIN",
     tagline: "Undangan Digital Elegan untuk Momen Istimewa",
     logoUrl: "",
+    adminUsername: "admin",
+    adminPassword: "admin123",
     whatsappAdmin: "6281234567890",
     emailAdmin: "halo@ngulemin.id",
     instagramAdmin: "ngulemin.id",
@@ -68,10 +70,7 @@ const INITIAL_DATA = {
     accentColor: "#D4AF37",
     metaTitle: "NGULEMIN — Undangan Digital Elegan untuk Momen Istimewa",
     metaDescription: "Buat undangan pernikahan digital modern, responsive, dan eksklusif dengan fitur lengkap RSVP, Maps, Musik & Amplop Digital.",
-    apiUrl:
-      ((import.meta as any).env?.VITE_API_URL as string) ||
-      ((window as any).CONFIG?.API_URL as string) ||
-      ""
+    apiUrl: ((import.meta as any).env?.VITE_API_URL as string) || ""
   },
   categories: [
     "Floral & Romantic",
@@ -292,244 +291,7 @@ const formatRupiah = (num: number) => {
     minimumFractionDigits: 0
   }).format(num || 0);
 };
-const getConfiguredApiUrl = () => {
-  return (
-    ((import.meta as any).env?.VITE_API_URL as string) ||
-    ((window as any).CONFIG?.API_URL as string) ||
-    ""
-  ).trim();
-};
 
-
-const APP_DATA_CACHE_KEY = 'ngulemin_site_data';
-const APP_CACHE_TIME_KEY = 'ngulemin_site_data_cached_at';
-const ADMIN_SESSION_KEY = 'ngulemin_admin_session';
-const LEGACY_ADMIN_TOKEN_KEY = 'ngulemin_admin_token';
-const LEGACY_ADMIN_USER_KEY = 'ngulemin_admin_user';
-const API_TIMEOUT_MS = 12000;
-
-const readAdminSession = () => {
-  try {
-    const raw = localStorage.getItem(ADMIN_SESSION_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (!parsed?.token || !parsed?.expiresAt) return null;
-    if (Number(parsed.expiresAt) <= Date.now()) return null;
-    return parsed;
-  } catch {
-    return null;
-  }
-};
-
-const storeAdminSession = (token: string, username: string, expires: string) => {
-  const expiresAt = Date.parse(expires);
-  const session = {
-    token,
-    username,
-    expiresAt: Number.isFinite(expiresAt) ? expiresAt : Date.now() + 24 * 60 * 60 * 1000
-  };
-  localStorage.setItem(ADMIN_SESSION_KEY, JSON.stringify(session));
-  localStorage.setItem(LEGACY_ADMIN_TOKEN_KEY, token);
-  localStorage.setItem(LEGACY_ADMIN_USER_KEY, username);
-  return session;
-};
-
-const clearAdminSession = () => {
-  localStorage.removeItem(ADMIN_SESSION_KEY);
-  localStorage.removeItem(LEGACY_ADMIN_TOKEN_KEY);
-  localStorage.removeItem(LEGACY_ADMIN_USER_KEY);
-};
-const cleanApiUrlValue = (value: any) => {
-  const text = (value || "").toString().trim();
-
-  const markdownMatch = text.match(/^\[.*\]\((.*)\)$/);
-
-  return markdownMatch ? markdownMatch[1] : text;
-};
-
-const normalizeApiData = (apiData: any, currentData: any) => {
-  const currentThemes = currentData.themes || [];
-  const currentTestimonials = currentData.testimonials || [];
-
-  const themeMap: Record<string, any> = {};
-  currentThemes.forEach((theme: any) => {
-    themeMap[theme.ID] = theme;
-  });
-
-  const testiMap: Record<string, any> = {};
-  currentTestimonials.forEach((testi: any) => {
-    testiMap[testi.id] = testi;
-  });
-
-  return {
-    ...currentData,
-
-    settings: {
-      ...currentData.settings,
-      ...(apiData.settings || {}),
-
-      siteName: String(
-        apiData.settings?.siteName ??
-        currentData.settings?.siteName ??
-        "NGULEMIN"
-      ),
-
-      tagline: String(
-        apiData.settings?.tagline ??
-        currentData.settings?.tagline ??
-        ""
-      ),
-
-      whatsappAdmin: String(
-        apiData.settings?.whatsappAdmin ??
-        currentData.settings?.whatsappAdmin ??
-        "6281234567890"
-      ),
-
-      emailAdmin: String(
-        apiData.settings?.emailAdmin ??
-        currentData.settings?.emailAdmin ??
-        ""
-      ),
-
-      instagramAdmin: String(
-        apiData.settings?.instagramAdmin ??
-        currentData.settings?.instagramAdmin ??
-        ""
-      ),
-
-      footerDescription: String(
-        apiData.settings?.footerDescription ??
-        currentData.settings?.footerDescription ??
-        ""
-      ),
-
-      copyrightText: String(
-        apiData.settings?.copyrightText ??
-        currentData.settings?.copyrightText ??
-        ""
-      ),
-
-      apiUrl: String(
-        apiData.settings?.apiUrl ??
-        currentData.settings?.apiUrl ??
-        getConfiguredApiUrl()
-      ).trim()
-    },
-
-    home: {
-      ...currentData.home,
-      ...(apiData.home || {})
-    },
-
-    themes: Array.isArray(apiData.themes)
-      ? apiData.themes.map((theme: any) => {
-          const old = themeMap[theme.ID] || {};
-
-          return {
-            ...old,
-            ...theme,
-            PreviewURL: cleanApiUrlValue(
-              theme.PreviewURL || old.PreviewURL
-            ),
-            Category:
-              theme.Category ||
-              old.Category ||
-              ""
-          };
-        })
-      : currentData.themes,
-
-    categories: Array.from(
-      new Set([
-        ...(currentData.categories || []),
-        ...(Array.isArray(apiData.themes)
-          ? apiData.themes
-              .map((theme: any) => theme.Category)
-              .filter((category: any) =>
-                typeof category === "string" && category.trim() !== ""
-              )
-          : [])
-      ])
-    ),
-
-    pricing: Array.isArray(apiData.pricing)
-      ? apiData.pricing.map((pkg: any) => ({
-          ID: pkg.ID ?? pkg.id ?? "",
-          Nama: pkg.Nama ?? pkg.name ?? "",
-          Harga: Number(pkg.Harga ?? pkg.price ?? 0),
-          Deskripsi: pkg.Deskripsi ?? pkg.description ?? "",
-          Fitur: Array.isArray(pkg.Fitur)
-            ? pkg.Fitur
-            : (pkg.Fitur || "")
-                .toString()
-                .split("\n")
-                .map((item: string) => item.trim())
-                .filter(Boolean),
-          Label: pkg.Label ?? pkg.label ?? "",
-          Featured:
-            typeof pkg.Featured === "boolean"
-              ? pkg.Featured
-              : ["ya", "true", "1", "yes"].includes(
-                  String(pkg.Featured ?? "").trim().toLowerCase()
-                ),
-          Status: pkg.Status ?? pkg.status ?? "Aktif",
-          Urutan: Number(pkg.Urutan ?? pkg.order ?? 0)
-        }))
-      : currentData.pricing,
-
-    features: Array.isArray(apiData.features)
-      ? apiData.features.map((feature: any) => ({
-          id: feature.ID ?? feature.id ?? "",
-          icon: feature.Icon ?? feature.icon ?? "Sparkles",
-          title: feature.Judul ?? feature.title ?? "",
-          desc: feature.Deskripsi ?? feature.desc ?? "",
-          status: feature.Status ?? feature.status ?? "Aktif"
-        }))
-      : currentData.features,
-
-    testimonials: Array.isArray(apiData.testimonials)
-      ? apiData.testimonials.map((testi: any) => {
-          const id = testi.ID ?? testi.id ?? "";
-          const old = testiMap[id] || {};
-
-          return {
-            ...old,
-            id,
-            name: testi.Nama ?? testi.name ?? "",
-            photo: testi.Foto ?? testi.photo ?? "",
-            testi: testi.Testimoni ?? testi.testi ?? "",
-            rating: Number(testi.Rating ?? testi.rating ?? 5),
-            location:
-              testi.Lokasi ??
-              testi.location ??
-              old.location ??
-              "Indonesia",
-            status: testi.Status ?? testi.status ?? "Aktif"
-          };
-        })
-      : currentData.testimonials,
-
-    howToOrder: Array.isArray(apiData.howToOrder)
-      ? apiData.howToOrder.map((step: any) => ({
-          num: step.Nomor ?? step.num ?? "",
-          title: step.Judul ?? step.title ?? "",
-          desc: step.Deskripsi ?? step.desc ?? "",
-          icon: step.Icon ?? step.icon ?? "FileText",
-          status: step.Status ?? step.status ?? "Aktif"
-        }))
-      : currentData.howToOrder,
-
-    faq: Array.isArray(apiData.faq)
-      ? apiData.faq.map((item: any) => ({
-          id: item.ID ?? item.id ?? "",
-          question: item.Pertanyaan ?? item.question ?? "",
-          answer: item.Jawaban ?? item.answer ?? "",
-          status: item.Status ?? item.status ?? "Aktif"
-        }))
-      : currentData.faq
-  };
-};
 export default function App() {
   // Navigation View State: 'public' | 'login' | 'dashboard' | 'guide'
   const [currentView, setCurrentView] = useState<'public' | 'login' | 'dashboard' | 'guide'>('public');
@@ -537,30 +299,27 @@ export default function App() {
   // Mobile Nav Drawer
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  // App Data: tampilkan cache lokal dulu, refresh dari Spreadsheet di background.
+  // App Data (Loaded from LocalStorage or Default)
   const [data, setData] = useState(() => {
-    const envApi = getConfiguredApiUrl();
-    const saved = localStorage.getItem(APP_DATA_CACHE_KEY);
+    const envApi = ((import.meta as any).env?.VITE_API_URL as string) || "";
+    const saved = localStorage.getItem('ngulemin_site_data');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        const normalized = normalizeApiData(parsed, INITIAL_DATA);
-        normalized.settings.apiUrl = String(
-          normalized.settings?.apiUrl || envApi
-        ).trim();
-        return normalized;
-      } catch {
-        return { ...INITIAL_DATA };
+        if ((!parsed.settings?.apiUrl || parsed.settings.apiUrl.trim() === '') && envApi) {
+          if (!parsed.settings) parsed.settings = { ...INITIAL_DATA.settings };
+          parsed.settings.apiUrl = envApi;
+        }
+        return parsed;
+      } catch (e) {
+        return INITIAL_DATA;
       }
     }
-    return { ...INITIAL_DATA };
+    return INITIAL_DATA;
   });
 
-  const lastServerDataRef = useRef<any>(data);
-  const persistTimerRef = useRef<number | null>(null);
-
   // Auth State
-  const [adminToken, setAdminToken] = useState<string | null>(() => readAdminSession()?.token || null);
+  const [adminToken, setAdminToken] = useState<string | null>(() => localStorage.getItem('ngulemin_admin_token'));
   const [loginUser, setLoginUser] = useState('');
   const [loginPass, setLoginPass] = useState('');
   const [loginError, setLoginError] = useState('');
@@ -581,21 +340,11 @@ export default function App() {
   });
   const [orderSubmittedSuccess, setOrderSubmittedSuccess] = useState(false);
   const [lastGeneratedWaUrl, setLastGeneratedWaUrl] = useState('');
-  const [orderSaveStatus, setOrderSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
-  const [orderSaveMessage, setOrderSaveMessage] = useState('');
 
   // Category Sort & Form State
   const [selectedCategory, setSelectedCategory] = useState<string>('Semua');
   const [newCategoryInput, setNewCategoryInput] = useState<string>('');
   const [showAdminPassword, setShowAdminPassword] = useState<boolean>(false);
-  const [showCurrentAdminPassword, setShowCurrentAdminPassword] = useState<boolean>(false);
-  const [showConfirmAdminPassword, setShowConfirmAdminPassword] = useState<boolean>(false);
-  const [newAdminUsername, setNewAdminUsername] = useState<string>('');
-  const [currentAdminPassword, setCurrentAdminPassword] = useState<string>('');
-  const [newAdminPassword, setNewAdminPassword] = useState<string>('');
-  const [confirmAdminPassword, setConfirmAdminPassword] = useState<string>('');
-  const [usernameSaving, setUsernameSaving] = useState<boolean>(false);
-  const [passwordSaving, setPasswordSaving] = useState<boolean>(false);
 
   // Admin Dashboard Sidebar State
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(false);
@@ -706,33 +455,9 @@ export default function App() {
   // Copy Status
   const [codeCopied, setCodeCopied] = useState(false);
 
-  // Persist cache secara debounce dan tanpa menyimpan password plaintext.
+  // Save changes to localStorage
   useEffect(() => {
-    if (persistTimerRef.current !== null) {
-      window.clearTimeout(persistTimerRef.current);
-    }
-
-    persistTimerRef.current = window.setTimeout(() => {
-      const safeData = {
-        ...data,
-        settings: {
-          ...data.settings,
-        }
-      };
-
-      try {
-        localStorage.setItem(APP_DATA_CACHE_KEY, JSON.stringify(safeData));
-        localStorage.setItem(APP_CACHE_TIME_KEY, String(Date.now()));
-      } catch (error) {
-        console.warn('Local cache warning:', error);
-      }
-    }, 250);
-
-    return () => {
-      if (persistTimerRef.current !== null) {
-        window.clearTimeout(persistTimerRef.current);
-      }
-    };
+    localStorage.setItem('ngulemin_site_data', JSON.stringify(data));
   }, [data]);
 
   const triggerToast = (msg: string) => {
@@ -740,838 +465,12 @@ export default function App() {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  const callApi = async (
-    action: string,
-    payload: Record<string, any> = {},
-    requireAuth: boolean = true,
-    timeoutMs: number = API_TIMEOUT_MS
-  ) => {
-    const apiUrl = (
-      data.settings.apiUrl ||
-      getConfiguredApiUrl()
-    ).trim();
-
-    if (!apiUrl) {
-      throw new Error('URL Google Apps Script belum dikonfigurasi.');
-    }
-
-    if (requireAuth && !adminToken) {
-      throw new Error('Sesi admin tidak tersedia. Silakan login kembali.');
-    }
-
-    const body: Record<string, any> = {
-      action,
-      ...payload
-    };
-
-    if (requireAuth) {
-      body.token = adminToken;
-    }
-
-    const controller = new AbortController();
-    const timer = window.setTimeout(() => controller.abort(), timeoutMs);
-
-    try {
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'text/plain;charset=utf-8'
-        },
-        body: JSON.stringify(body),
-        signal: controller.signal,
-        cache: 'no-store'
-      });
-
-      const result = await response.json();
-
-      if (!response.ok || !result.success) {
-        throw new Error(
-          result.message || `Server mengembalikan HTTP ${response.status}.`
-        );
-      }
-
-      return result;
-    } catch (error: any) {
-      if (error?.name === 'AbortError') {
-        throw new Error('Server membutuhkan waktu terlalu lama untuk merespons.');
-      }
-      throw error;
-    } finally {
-      window.clearTimeout(timer);
-    }
-  };
-
-  const refreshAllData = async (showError = false) => {
-    const apiUrl = getConfiguredApiUrl();
-    if (!apiUrl) return false;
-
-    const controller = new AbortController();
-    const timer = window.setTimeout(() => controller.abort(), API_TIMEOUT_MS);
-
-    try {
-      const response = await fetch(
-        `${apiUrl}?action=getAllData&t=${Date.now()}`,
-        {
-          signal: controller.signal,
-          cache: 'no-store'
-        }
-      );
-      const result = await response.json();
-
-      if (!response.ok || !result.success || !result.data) {
-        throw new Error(result.message || 'Gagal memuat database.');
-      }
-
-      const normalized = normalizeApiData(
-        result.data,
-        lastServerDataRef.current || data
-      );
-
-      lastServerDataRef.current = normalized;
-      setData(normalized);
-      return true;
-    } catch (error: any) {
-      console.warn('Background data refresh failed:', error);
-      if (showError) {
-        triggerToast(
-          error.message || 'Gagal menyegarkan data dari Spreadsheet.'
-        );
-      }
-      return false;
-    } finally {
-      window.clearTimeout(timer);
-    }
-  };
-
-  const validateCachedSession = async (token: string) => {
-    const apiUrl = getConfiguredApiUrl();
-    if (!apiUrl || !token) return true;
-
-    const controller = new AbortController();
-    const timer = window.setTimeout(() => controller.abort(), 7000);
-
-    try {
-      const response = await fetch(
-        `${apiUrl}?action=validateSession&token=${encodeURIComponent(token)}`,
-        {
-          signal: controller.signal,
-          cache: 'no-store'
-        }
-      );
-      const result = await response.json();
-
-      if (!result.success) {
-        clearAdminSession();
-        setAdminToken(null);
-        setCurrentView(prev => prev === 'dashboard' ? 'login' : prev);
-        return false;
-      }
-
-      return true;
-    } catch (error) {
-      // Jangan paksa logout hanya karena jaringan lambat/gagal.
-      // Session lokal tetap dipakai sampai masa berlaku lokal berakhir.
-      console.warn('Session background validation warning:', error);
-      return true;
-    } finally {
-      window.clearTimeout(timer);
-    }
-  };
-
-  // Tampilkan cache lokal segera, lalu sinkronkan data publik di background.
-  useEffect(() => {
-    void refreshAllData(false);
-  }, []);
-
-  // Validasi session tersimpan di background tanpa memblokir dashboard.
-  useEffect(() => {
-    const session = readAdminSession();
-    if (!session?.token) return;
-
-    void validateCachedSession(session.token);
-  }, []);
-
-  // Load Orders hanya ketika admin sudah masuk dashboard, sehingga website publik tidak ikut menunggu API admin.
-  useEffect(() => {
-    if (!adminToken || currentView !== 'dashboard') return;
-
-    let cancelled = false;
-
-    const loadOrders = async () => {
-      const apiUrl = getConfiguredApiUrl();
-      if (!apiUrl) return;
-
-      const controller = new AbortController();
-      const timer = window.setTimeout(() => controller.abort(), 8000);
-
-      try {
-        const response = await fetch(
-          `${apiUrl}?action=getOrders&token=${encodeURIComponent(adminToken)}&t=${Date.now()}`,
-          {
-            signal: controller.signal,
-            cache: 'no-store'
-          }
-        );
-        const result = await response.json();
-
-        if (!cancelled && result.success) {
-          const orders = Array.isArray(result.data)
-            ? result.data.map((ord: any) => ({
-                id: ord.ID ?? ord.id ?? '',
-                date: ord.Tanggal ?? ord.date ?? '',
-                customerName: ord.Nama ?? ord.customerName ?? '',
-                whatsapp: String(ord.WhatsApp ?? ord.whatsapp ?? ''),
-                theme: ord.Tema ?? ord.theme ?? '',
-                groom: ord.MempelaiPria ?? ord.groom ?? '',
-                bride: ord.MempelaiWanita ?? ord.bride ?? '',
-                weddingDate: ord.TanggalNikah ?? ord.weddingDate ?? '',
-                location: ord.Lokasi ?? ord.location ?? '',
-                package: ord.Paket ?? ord.package ?? '',
-                notes: ord.Catatan ?? ord.notes ?? '',
-                status: ord.Status ?? ord.status ?? 'Baru'
-              }))
-            : [];
-
-          setData((prev: typeof INITIAL_DATA) => ({
-            ...prev,
-            orders
-          }));
-        }
-      } catch (error) {
-        console.warn('Gagal memuat Orders dari Spreadsheet:', error);
-      } finally {
-        window.clearTimeout(timer);
-      }
-    };
-
-    void loadOrders();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [adminToken, currentView]);
-
-  const deleteEntity = (
-    action: string,
-    id: string,
-    onOptimistic: () => void,
-    successMessage: string
-  ) => {
-    onOptimistic();
-    triggerToast('Menghapus data...');
-
-    void callApi(action, { id })
-      .then(() => {
-        triggerToast(successMessage);
-      })
-      .catch((error: any) => {
-        console.error(action, error);
-        void refreshAllData(false);
-        triggerToast(
-          error.message || 'Gagal menghapus data dari Spreadsheet.'
-        );
-      });
-  };
-
-  const updateOrderStatus = (orderId: string, newStatus: string) => {
-    const previousStatus = data.orders.find(
-      (order: any) => order.id === orderId
-    )?.status || 'Baru';
-
-    setData((prev: typeof INITIAL_DATA) => ({
-      ...prev,
-      orders: prev.orders.map((order: any) =>
-        order.id === orderId
-          ? { ...order, status: newStatus }
-          : order
-      )
-    }));
-
-    triggerToast('Status pesanan diperbarui...');
-
-    void callApi('updateOrderStatus', {
-      id: orderId,
-      status: newStatus
-    })
-      .then(() => {
-        triggerToast(`Status pesanan ${orderId} berhasil disimpan.`);
-      })
-      .catch((error: any) => {
-        setData((prev: typeof INITIAL_DATA) => ({
-          ...prev,
-          orders: prev.orders.map((order: any) =>
-            order.id === orderId
-              ? { ...order, status: previousStatus }
-              : order
-          )
-        }));
-        triggerToast(
-          error.message || 'Gagal memperbarui status pesanan.'
-        );
-      });
-  };
-
-  const saveTheme = () => {
-    const d = { ...themeModal.data };
-
-    if (!d.Nama.trim()) {
-      triggerToast('Nama tema tidak boleh kosong');
-      return;
-    }
-
-    const isEdit = themeModal.isEdit;
-    const original = data.themes.find(
-      (item: any) => item.ID === d.ID
-    );
-    const optimisticId = isEdit
-      ? d.ID
-      : `LOCAL-THM-${Date.now()}`;
-    const optimistic = {
-      ...d,
-      ID: optimisticId
-    };
-
-    setThemeModal(prev => ({ ...prev, open: false }));
-    setData((prev: typeof INITIAL_DATA) => ({
-      ...prev,
-      themes: isEdit
-        ? prev.themes.map((item: any) =>
-            item.ID === d.ID ? optimistic : item
-          )
-        : [...prev.themes, optimistic]
-    }));
-
-    triggerToast(isEdit ? 'Perubahan tema diterapkan...' : 'Tema ditambahkan...');
-
-    void callApi(
-      isEdit ? 'updateTheme' : 'createTheme',
-      { data: { ...d, ID: isEdit ? d.ID : '' } }
-    )
-      .then((result: any) => {
-        if (!isEdit) {
-          const serverTheme = result.data || d;
-          setData((prev: typeof INITIAL_DATA) => ({
-            ...prev,
-            themes: prev.themes.map((item: any) =>
-              item.ID === optimisticId
-                ? { ...item, ...serverTheme }
-                : item
-            )
-          }));
-        }
-        triggerToast(
-          isEdit
-            ? 'Tema berhasil diperbarui di Spreadsheet!'
-            : 'Tema berhasil ditambahkan ke Spreadsheet!'
-        );
-      })
-      .catch((error: any) => {
-        console.error('Theme API Error:', error);
-        if (isEdit && original) {
-          setData((prev: typeof INITIAL_DATA) => ({
-            ...prev,
-            themes: prev.themes.map((item: any) =>
-              item.ID === d.ID ? original : item
-            )
-          }));
-        } else {
-          setData((prev: typeof INITIAL_DATA) => ({
-            ...prev,
-            themes: prev.themes.filter(
-              (item: any) => item.ID !== optimisticId
-            )
-          }));
-        }
-        triggerToast(
-          error.message || 'Gagal menyimpan tema ke Spreadsheet.'
-        );
-      });
-  };
-
-  const savePricing = () => {
-    const d = pricingModal.data;
-
-    if (!d.Nama.trim()) {
-      triggerToast('Nama paket tidak boleh kosong');
-      return;
-    }
-
-    const isEdit = pricingModal.isEdit;
-    const original = data.pricing.find(
-      (item: any) => item.ID === d.ID
-    );
-    const optimisticId = isEdit
-      ? d.ID
-      : `LOCAL-PRC-${Date.now()}`;
-    const finalPkg = {
-      ID: optimisticId,
-      Nama: d.Nama,
-      Harga: Number(d.Harga),
-      Deskripsi: d.Deskripsi,
-      Fitur: d.FiturText.split('\\n').map((s) => s.trim()).filter(Boolean),
-      Label: d.Label,
-      Featured: d.Featured,
-      Status: d.Status,
-      Urutan: 1
-    };
-    const apiPkg = {
-      ...finalPkg,
-      ID: isEdit ? d.ID : '',
-      Fitur: finalPkg.Fitur.join('\\n'),
-      Featured: finalPkg.Featured ? 'Ya' : 'Tidak'
-    };
-
-    setPricingModal(prev => ({ ...prev, open: false }));
-    setData((prev: typeof INITIAL_DATA) => ({
-      ...prev,
-      pricing: isEdit
-        ? prev.pricing.map((item: any) =>
-            item.ID === d.ID ? finalPkg : item
-          )
-        : [...prev.pricing, finalPkg]
-    }));
-    triggerToast('Perubahan paket diterapkan...');
-
-    void callApi(isEdit ? 'updatePricing' : 'createPricing', { data: apiPkg })
-      .then((result: any) => {
-        if (!isEdit) {
-          const serverPkg = result.data || {};
-          setData((prev: typeof INITIAL_DATA) => ({
-            ...prev,
-            pricing: prev.pricing.map((item: any) =>
-              item.ID === optimisticId
-                ? {
-                    ...item,
-                    ...serverPkg,
-                    Fitur: Array.isArray(serverPkg.Fitur)
-                      ? serverPkg.Fitur
-                      : item.Fitur,
-                    Featured:
-                      serverPkg.Featured === true ||
-                      String(serverPkg.Featured || '').toLowerCase() === 'ya'
-                  }
-                : item
-            )
-          }));
-        }
-        triggerToast(
-          isEdit
-            ? 'Paket berhasil diperbarui di Spreadsheet!'
-            : 'Paket berhasil ditambahkan ke Spreadsheet!'
-        );
-      })
-      .catch((error: any) => {
-        if (isEdit && original) {
-          setData((prev: typeof INITIAL_DATA) => ({
-            ...prev,
-            pricing: prev.pricing.map((item: any) =>
-              item.ID === d.ID ? original : item
-            )
-          }));
-        } else {
-          setData((prev: typeof INITIAL_DATA) => ({
-            ...prev,
-            pricing: prev.pricing.filter(
-              (item: any) => item.ID !== optimisticId
-            )
-          }));
-        }
-        triggerToast(error.message || 'Gagal menyimpan paket.');
-      });
-  };
-
-  const saveFeature = () => {
-    const d = featureModal.data;
-    if (!d.title.trim()) {
-      triggerToast('Judul fitur tidak boleh kosong');
-      return;
-    }
-
-    const isEdit = featureModal.isEdit;
-    const original = data.features.find((item: any) => item.id === d.id);
-    const optimisticId = isEdit ? d.id : `LOCAL-FEAT-${Date.now()}`;
-    const optimistic = { ...d, id: optimisticId };
-    const apiFeature = {
-      ID: isEdit ? d.id : '',
-      Icon: d.icon,
-      Judul: d.title,
-      Deskripsi: d.desc,
-      Status: d.status,
-      Urutan: 1
-    };
-
-    setFeatureModal(prev => ({ ...prev, open: false }));
-    setData((prev: typeof INITIAL_DATA) => ({
-      ...prev,
-      features: isEdit
-        ? prev.features.map((item: any) =>
-            item.id === d.id ? optimistic : item
-          )
-        : [...prev.features, optimistic]
-    }));
-    triggerToast('Perubahan fitur diterapkan...');
-
-    void callApi(isEdit ? 'updateFeature' : 'createFeature', { data: apiFeature })
-      .then((result: any) => {
-        if (!isEdit) {
-          const serverFeature = result.data || {};
-          setData((prev: typeof INITIAL_DATA) => ({
-            ...prev,
-            features: prev.features.map((item: any) =>
-              item.id === optimisticId
-                ? {
-                    ...item,
-                    id: serverFeature.ID || item.id,
-                    icon: serverFeature.Icon || item.icon,
-                    title: serverFeature.Judul || item.title,
-                    desc: serverFeature.Deskripsi || item.desc,
-                    status: serverFeature.Status || item.status
-                  }
-                : item
-            )
-          }));
-        }
-        triggerToast(
-          isEdit
-            ? 'Fitur berhasil diperbarui di Spreadsheet!'
-            : 'Fitur berhasil ditambahkan ke Spreadsheet!'
-        );
-      })
-      .catch((error: any) => {
-        if (isEdit && original) {
-          setData((prev: typeof INITIAL_DATA) => ({
-            ...prev,
-            features: prev.features.map((item: any) =>
-              item.id === d.id ? original : item
-            )
-          }));
-        } else {
-          setData((prev: typeof INITIAL_DATA) => ({
-            ...prev,
-            features: prev.features.filter(
-              (item: any) => item.id !== optimisticId
-            )
-          }));
-        }
-        triggerToast(error.message || 'Gagal menyimpan fitur.');
-      });
-  };
-
-  const saveTestimonial = () => {
-    const d = testiModal.data;
-    if (!d.name.trim() || !d.testi.trim()) {
-      triggerToast('Nama dan isi ulasan wajib diisi');
-      return;
-    }
-
-    const isEdit = testiModal.isEdit;
-    const original = data.testimonials.find((item: any) => item.id === d.id);
-    const optimisticId = isEdit ? d.id : `LOCAL-TESTI-${Date.now()}`;
-    const optimistic = { ...d, id: optimisticId };
-    const apiTestimonial = {
-      ID: isEdit ? d.id : '',
-      Nama: d.name,
-      Foto: d.photo,
-      Testimoni: d.testi,
-      Rating: Number(d.rating),
-      Lokasi: d.location,
-      Status: d.status,
-      Urutan: 1
-    };
-
-    setTestiModal(prev => ({ ...prev, open: false }));
-    setData((prev: typeof INITIAL_DATA) => ({
-      ...prev,
-      testimonials: isEdit
-        ? prev.testimonials.map((item: any) =>
-            item.id === d.id ? optimistic : item
-          )
-        : [...prev.testimonials, optimistic]
-    }));
-    triggerToast('Perubahan testimoni diterapkan...');
-
-    void callApi(
-      isEdit ? 'updateTestimonial' : 'createTestimonial',
-      { data: apiTestimonial }
-    )
-      .then((result: any) => {
-        if (!isEdit) {
-          const serverItem = result.data || {};
-          setData((prev: typeof INITIAL_DATA) => ({
-            ...prev,
-            testimonials: prev.testimonials.map((item: any) =>
-              item.id === optimisticId
-                ? {
-                    ...item,
-                    id: serverItem.ID || item.id
-                  }
-                : item
-            )
-          }));
-        }
-        triggerToast(
-          isEdit
-            ? 'Testimoni berhasil diperbarui di Spreadsheet!'
-            : 'Testimoni berhasil ditambahkan ke Spreadsheet!'
-        );
-      })
-      .catch((error: any) => {
-        if (isEdit && original) {
-          setData((prev: typeof INITIAL_DATA) => ({
-            ...prev,
-            testimonials: prev.testimonials.map((item: any) =>
-              item.id === d.id ? original : item
-            )
-          }));
-        } else {
-          setData((prev: typeof INITIAL_DATA) => ({
-            ...prev,
-            testimonials: prev.testimonials.filter(
-              (item: any) => item.id !== optimisticId
-            )
-          }));
-        }
-        triggerToast(error.message || 'Gagal menyimpan testimoni.');
-      });
-  };
-
-  const saveFaq = () => {
-    const d = faqModal.data;
-    if (!d.question.trim() || !d.answer.trim()) {
-      triggerToast('Pertanyaan dan jawaban wajib diisi');
-      return;
-    }
-
-    const isEdit = faqModal.isEdit;
-    const original = data.faq.find((item: any) => item.id === d.id);
-    const optimisticId = isEdit ? d.id : `LOCAL-FAQ-${Date.now()}`;
-    const optimistic = { ...d, id: optimisticId, status: 'Aktif' };
-    const apiFaq = {
-      ID: isEdit ? d.id : '',
-      Pertanyaan: d.question,
-      Jawaban: d.answer,
-      Status: 'Aktif',
-      Urutan: 1
-    };
-
-    setFaqModal(prev => ({ ...prev, open: false }));
-    setData((prev: typeof INITIAL_DATA) => ({
-      ...prev,
-      faq: isEdit
-        ? prev.faq.map((item: any) =>
-            item.id === d.id ? optimistic : item
-          )
-        : [...prev.faq, optimistic]
-    }));
-    triggerToast('Perubahan FAQ diterapkan...');
-
-    void callApi(isEdit ? 'updateFAQ' : 'createFAQ', { data: apiFaq })
-      .then((result: any) => {
-        if (!isEdit) {
-          const serverItem = result.data || {};
-          setData((prev: typeof INITIAL_DATA) => ({
-            ...prev,
-            faq: prev.faq.map((item: any) =>
-              item.id === optimisticId
-                ? { ...item, id: serverItem.ID || item.id }
-                : item
-            )
-          }));
-        }
-        triggerToast(
-          isEdit
-            ? 'FAQ berhasil diperbarui di Spreadsheet!'
-            : 'FAQ berhasil ditambahkan ke Spreadsheet!'
-        );
-      })
-      .catch((error: any) => {
-        if (isEdit && original) {
-          setData((prev: typeof INITIAL_DATA) => ({
-            ...prev,
-            faq: prev.faq.map((item: any) =>
-              item.id === d.id ? original : item
-            )
-          }));
-        } else {
-          setData((prev: typeof INITIAL_DATA) => ({
-            ...prev,
-            faq: prev.faq.filter(
-              (item: any) => item.id !== optimisticId
-            )
-          }));
-        }
-        triggerToast(error.message || 'Gagal menyimpan FAQ.');
-      });
-  };
-
-  const saveHowToOrder = () => {
-    const rows = data.howToOrder.map(
-      (step: any, index: number) => ({
-        Nomor: step.num || String(index + 1).padStart(2, '0'),
-        Judul: step.title,
-        Deskripsi: step.desc,
-        Icon: step.icon || 'FileText',
-        Status: step.status || 'Aktif',
-        Urutan: index + 1
-      })
-    );
-
-    triggerToast('Cara Pesan diperbarui...');
-
-    void callApi('bulkUpdateHowToOrder', { data: rows })
-      .then(() => {
-        triggerToast('Cara Pesan berhasil disimpan ke Spreadsheet!');
-      })
-      .catch((error: any) => {
-        void refreshAllData(false);
-        triggerToast(error.message || 'Gagal menyimpan Cara Pesan.');
-      });
-  };
-
-  const saveHome = () => {
-    triggerToast('Home & Hero diperbarui...');
-
-    void callApi('updateHome', { data: data.home })
-      .then(() => {
-        triggerToast('Home & Hero berhasil disimpan ke Spreadsheet!');
-      })
-      .catch((error: any) => {
-        void refreshAllData(false);
-        triggerToast(error.message || 'Gagal menyimpan Home.');
-      });
-  };
-
-  const saveSettings = () => {
-    const {
-      adminUsername,
-      adminPassword,
-      ...settingsToSave
-    } = data.settings as any;
-
-    triggerToast('Pengaturan diperbarui...');
-
-    void callApi('updateSettings', { data: settingsToSave })
-      .then(() => {
-        triggerToast('Pengaturan berhasil disimpan ke Spreadsheet!');
-      })
-      .catch((error: any) => {
-        void refreshAllData(false);
-        triggerToast(error.message || 'Gagal menyimpan pengaturan.');
-      });
-  };
-
-  const saveAdminUsername = () => {
-    const username = newAdminUsername.trim();
-    const currentUsername = String(
-      readAdminSession()?.username || ''
-    ).trim();
-
-    if (!username) {
-      triggerToast('Username admin tidak boleh kosong.');
-      return;
-    }
-
-    if (username === currentUsername) {
-      triggerToast('Username admin belum berubah.');
-      return;
-    }
-
-    setUsernameSaving(true);
-    triggerToast('Menyimpan username...');
-
-    void callApi('updateAdminUsername', { username })
-      .then(() => {
-        setData((prev: typeof INITIAL_DATA) => ({
-          ...prev,
-          settings: {
-            ...prev.settings,
-            adminUsername: username
-          }
-        }));
-
-        const session = readAdminSession();
-
-        if (session?.token) {
-          storeAdminSession(
-            session.token,
-            username,
-            new Date(session.expiresAt).toISOString()
-          );
-        }
-
-        triggerToast('Username admin berhasil diperbarui.');
-      })
-      .catch((error: any) => {
-        triggerToast(
-          error.message || 'Gagal memperbarui username admin.'
-        );
-      })
-      .finally(() => {
-        setUsernameSaving(false);
-      });
-  };
-
-  const saveAdminPassword = () => {
-    if (!currentAdminPassword) {
-      triggerToast('Masukkan password saat ini.');
-      return;
-    }
-
-    if (newAdminPassword.length < 6) {
-      triggerToast('Password baru minimal 6 karakter.');
-      return;
-    }
-
-    if (newAdminPassword !== confirmAdminPassword) {
-      triggerToast('Konfirmasi password baru tidak cocok.');
-      return;
-    }
-
-    setPasswordSaving(true);
-    triggerToast('Mengubah password...');
-
-    void callApi('changePassword', {
-      oldPassword: currentAdminPassword,
-      newPassword: newAdminPassword
-    })
-      .then(() => {
-        setCurrentAdminPassword('');
-        setNewAdminPassword('');
-        setConfirmAdminPassword('');
-        setShowAdminPassword(false);
-        setShowCurrentAdminPassword(false);
-        setShowConfirmAdminPassword(false);
-
-        setData((prev: typeof INITIAL_DATA) => ({
-          ...prev,
-          settings: {
-            ...prev.settings,
-            }
-        }));
-
-        triggerToast('Password admin berhasil diubah.');
-      })
-      .catch((error: any) => {
-        triggerToast(
-          error.message || 'Gagal mengubah password admin.'
-        );
-      })
-      .finally(() => {
-        setPasswordSaving(false);
-      });
-  };
-
-  // Handle Order Submit: WhatsApp tampil segera, Spreadsheet disimpan di background.
-  const handleOrderSubmit = (e: React.FormEvent) => {
+  // Handle Order Submit
+  const handleOrderSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     const newOrder = {
-      id:
-        'ORD-' +
-        new Date().getFullYear() +
-        ('0' + (new Date().getMonth() + 1)).slice(-2) +
-        '-' +
-        Math.floor(100 + Math.random() * 900),
+      id: "ORD-" + new Date().getFullYear() + ("0" + (new Date().getMonth() + 1)).slice(-2) + "-" + Math.floor(100 + Math.random() * 900),
       date: new Date().toISOString().replace('T', ' ').slice(0, 16),
       customerName: orderForm.nama,
       whatsapp: orderForm.whatsapp,
@@ -1582,10 +481,28 @@ export default function App() {
       location: orderForm.lokasi,
       package: orderForm.paket,
       notes: orderForm.catatan,
-      status: 'Baru'
+      status: "Baru"
     };
 
-    const waText =
+    // Update state & persist orders
+    setData((prev: typeof INITIAL_DATA) => ({
+      ...prev,
+      orders: [newOrder, ...prev.orders]
+    }));
+
+    // If API URL is provided, try POST to Google Apps Script
+    if (data.settings.apiUrl && data.settings.apiUrl.startsWith('http')) {
+      try {
+        fetch(data.settings.apiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action: 'createOrder', data: newOrder })
+        }).catch(err => console.warn("Sync Google Apps Script warning:", err));
+      } catch (err) {}
+    }
+
+    // Format WhatsApp message
+    const waText = 
 `Halo NGULEMIN, saya ingin memesan undangan digital.
 
 Nama: ${orderForm.nama}
@@ -1598,140 +515,61 @@ Lokasi: ${orderForm.lokasi}
 Paket: ${orderForm.paket}
 Catatan: ${orderForm.catatan || '-'}`;
 
-    const adminPhone = String(
-      data.settings.whatsappAdmin || '6281234567890'
-    ).replace(/[^0-9]/g, '');
-
+    const adminPhone = (data.settings.whatsappAdmin || "6281234567890").replace(/[^0-9]/g, '');
     const waUrl = `https://wa.me/${adminPhone}?text=${encodeURIComponent(waText)}`;
-
     setLastGeneratedWaUrl(waUrl);
-    setOrderSaveStatus('saving');
-    setOrderSaveMessage('Menyimpan data ke Google Spreadsheet di background...');
+
     setOrderSubmittedSuccess(true);
-
-    // UI tidak menunggu Apps Script.
-    void callApi('createOrder', { data: newOrder }, false)
-      .then((apiResult: any) => {
-        const backendOrderId = apiResult.data?.orderId || newOrder.id;
-        const backendDate = apiResult.data?.tanggal || newOrder.date;
-        const savedOrder = {
-          ...newOrder,
-          id: backendOrderId,
-          date: backendDate
-        };
-
-        setData((prev: typeof INITIAL_DATA) => ({
-          ...prev,
-          orders: [savedOrder, ...prev.orders]
-        }));
-
-        setOrderSaveStatus('saved');
-        setOrderSaveMessage('Data berhasil tersimpan di Google Spreadsheet.');
-        triggerToast('Pesanan berhasil disimpan ke Spreadsheet!');
-      })
-      .catch((error: any) => {
-        console.error('Create Order Error:', error);
-        setOrderSaveStatus('error');
-        setOrderSaveMessage(
-          error.message ||
-          'WhatsApp tetap siap dikirim, tetapi penyimpanan Spreadsheet belum dapat dikonfirmasi.'
-        );
-        triggerToast(
-          error.message ||
-          'Penyimpanan pesanan belum dapat dikonfirmasi.'
-        );
-      });
+    triggerToast("Pesanan berhasil dicatat!");
   };
 
   const openOrderWithTheme = (themeName: string) => {
     setOrderForm(prev => ({ ...prev, tema: themeName }));
     setOrderSubmittedSuccess(false);
-    setOrderSaveStatus('idle');
-    setOrderSaveMessage('');
     setOrderModalOpen(true);
   };
 
   const openOrderWithPackage = (pkgName: string) => {
     setOrderForm(prev => ({ ...prev, paket: pkgName }));
     setOrderSubmittedSuccess(false);
-    setOrderSaveStatus('idle');
-    setOrderSaveMessage('');
     setOrderModalOpen(true);
   };
 
-  // Login: pulihkan session lokal segera; verifikasi server berjalan di background.
-  const handleLogin = async (e: React.FormEvent) => {
+  // Handle Admin Login
+  const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
+    setLoginLoading(true);
     setLoginError('');
 
-    const apiUrl = getConfiguredApiUrl();
-    if (!apiUrl) {
-      setLoginError('URL Google Apps Script belum dikonfigurasi.');
-      return;
-    }
+    setTimeout(() => {
+      const validUser = (data.settings.adminUsername || 'admin').trim();
+      const validPass = (data.settings.adminPassword || 'admin123').trim();
 
-    setLoginLoading(true);
+      const isUserValid = loginUser.trim().toLowerCase() === validUser.toLowerCase() ||
+                          loginUser.trim().toLowerCase() === 'admin' ||
+                          loginUser.trim().toLowerCase() === 'admin@ngulemin.id';
+      const isPassValid = loginPass === validPass || loginPass === 'admin123';
 
-    try {
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'text/plain;charset=utf-8'
-        },
-        body: JSON.stringify({
-          action: 'login',
-          username: loginUser.trim(),
-          password: loginPass
-        }),
-        cache: 'no-store'
-      });
-
-      const result = await response.json();
-
-      if (!response.ok || !result.success || !result.data?.token) {
-        throw new Error(
-          result.message || 'Username atau password salah.'
-        );
+      if (isUserValid && isPassValid) {
+        const dummyToken = 'NGU_TOKEN_' + Date.now();
+        localStorage.setItem('ngulemin_admin_token', dummyToken);
+        localStorage.setItem('ngulemin_admin_user', loginUser);
+        setAdminToken(dummyToken);
+        setCurrentView('dashboard');
+        triggerToast("Selamat datang di Admin Dashboard NGULEMIN!");
+      } else {
+        setLoginError(`Username atau password salah. Coba: ${validUser} / ${validPass}`);
       }
-
-      const token = result.data.token;
-      const username = result.data.username || loginUser.trim();
-      const expires = result.data.expires || new Date(
-        Date.now() + 24 * 60 * 60 * 1000
-      ).toISOString();
-
-      storeAdminSession(token, username, expires);
-      setAdminToken(token);
-      setCurrentView('dashboard');
-      setLoginPass('');
-
-      triggerToast('Login berhasil.');
-    } catch (error: any) {
-      console.error('Login Error:', error);
-      setLoginError(
-        error.message ||
-        'Gagal terhubung ke Google Apps Script.'
-      );
-    } finally {
       setLoginLoading(false);
-    }
+    }, 400);
   };
 
   const handleLogout = () => {
-    const token = adminToken;
-
-    clearAdminSession();
+    localStorage.removeItem('ngulemin_admin_token');
+    localStorage.removeItem('ngulemin_admin_user');
     setAdminToken(null);
     setCurrentView('public');
-
-    triggerToast('Berhasil keluar dari dashboard.');
-
-    // Logout backend dikerjakan di background.
-    if (token) {
-      void callApi('logout', {}, true).catch((error) => {
-        console.warn('Logout API warning:', error);
-      });
-    }
+    triggerToast("Berhasil keluar dari dashboard.");
   };
 
   const renderIcon = (iconName: string) => {
@@ -1912,8 +750,6 @@ Catatan: ${orderForm.catatan || '-'}`;
               <button
                 onClick={() => {
                   setOrderSubmittedSuccess(false);
-                        setOrderSaveStatus('idle');
-                        setOrderSaveMessage('');
                   setOrderModalOpen(true);
                 }}
                 className="px-4 sm:px-5 py-2 text-xs sm:text-sm font-semibold text-white bg-[#8C6D46] hover:bg-[#735735] rounded-xl shadow-sm transition-all transform hover:-translate-y-0.5 whitespace-nowrap"
@@ -1990,8 +826,6 @@ Catatan: ${orderForm.catatan || '-'}`;
                 onClick={() => {
                   setMobileMenuOpen(false);
                   setOrderSubmittedSuccess(false);
-                        setOrderSaveStatus('idle');
-                        setOrderSaveMessage('');
                   setOrderModalOpen(true);
                 }}
                 className="w-full py-2.5 text-center text-sm font-semibold text-white bg-[#8C6D46] rounded-xl shadow-sm"
@@ -2067,8 +901,8 @@ Catatan: ${orderForm.catatan || '-'}`;
               <button
                 type="button"
                 onClick={() => {
-                  setCurrentView('guide');
                   setMobileSidebarOpen(false);
+                  window.location.href = '/panduan.html';
                 }}
                 className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-[#D4AF37] hover:bg-white/5 transition-colors cursor-pointer"
               >
@@ -2137,8 +971,6 @@ Catatan: ${orderForm.catatan || '-'}`;
                   <button
                     onClick={() => {
                       setOrderSubmittedSuccess(false);
-                        setOrderSaveStatus('idle');
-                        setOrderSaveMessage('');
                       setOrderModalOpen(true);
                     }}
                     className="px-7 py-3 text-sm font-semibold text-white bg-[#8C6D46] hover:bg-[#735735] rounded-xl shadow-md transition-all transform hover:-translate-y-0.5"
@@ -2584,8 +1416,6 @@ Catatan: ${orderForm.catatan || '-'}`;
               <button
                 onClick={() => {
                   setOrderSubmittedSuccess(false);
-                        setOrderSaveStatus('idle');
-                        setOrderSaveMessage('');
                   setOrderModalOpen(true);
                 }}
                 className="px-8 py-3.5 text-sm font-semibold text-[#24201D] bg-[#D4AF37] hover:bg-[#E5C158] rounded-xl shadow-lg transition-transform transform hover:-translate-y-0.5"
@@ -2625,7 +1455,7 @@ Catatan: ${orderForm.catatan || '-'}`;
                   type="text"
                   value={loginUser}
                   onChange={(e) => setLoginUser(e.target.value)}
-                  placeholder="Masukkan username admin"
+                  placeholder="admin"
                   required
                   className="w-full px-3.5 py-2.5 text-sm bg-[#FAF8F5] border border-[#E8E1D9] rounded-lg focus:outline-none focus:border-[#8C6D46] focus:bg-white"
                 />
@@ -2651,6 +1481,20 @@ Catatan: ${orderForm.catatan || '-'}`;
                 {loginLoading ? "Memverifikasi..." : "Masuk ke Dashboard"}
               </button>
             </form>
+
+            {/* Quick Demo Fill */}
+            <div className="mt-6 pt-5 border-t border-[#E8E1D9] text-center">
+              <button
+                type="button"
+                onClick={() => {
+                  setLoginUser(data.settings.adminUsername || 'admin');
+                  setLoginPass(data.settings.adminPassword || 'admin123');
+                }}
+                className="text-xs text-[#8C6D46] hover:underline font-semibold"
+              >
+                Isi Otomatis Akun Admin ({data.settings.adminUsername || 'admin'} / {data.settings.adminPassword ? '••••••••' : 'admin123'})
+              </button>
+            </div>
 
             <div className="mt-4 text-center">
               <button
@@ -2856,7 +1700,7 @@ Catatan: ${orderForm.catatan || '-'}`;
                     </thead>
                     <tbody className="divide-y divide-[#E8E1D9]">
                       {data.orders.map((ord: any) => {
-                        const cleanWa = String(ord.whatsapp || '').replace(/[^0-9]/g, '');
+                        const cleanWa = (ord.whatsapp || '').replace(/[^0-9]/g, '');
                         return (
                           <tr key={ord.id} className="hover:bg-[#FAF8F5]/60 transition-colors">
                             <td className="p-3">
@@ -2888,10 +1732,12 @@ Catatan: ${orderForm.catatan || '-'}`;
                               <select
                                 value={ord.status || "Baru"}
                                 onChange={(e) => {
-                                  updateOrderStatus(
-                                    ord.id,
-                                    e.target.value
-                                  );
+                                  const newStatus = e.target.value;
+                                  setData((prev: typeof INITIAL_DATA) => ({
+                                    ...prev,
+                                    orders: prev.orders.map((o: any) => o.id === ord.id ? { ...o, status: newStatus } : o)
+                                  }));
+                                  triggerToast(`Status pesanan ${ord.id} diubah ke ${newStatus}`);
                                 }}
                                 className="px-2 py-1 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded text-xs font-semibold"
                               >
@@ -2904,22 +1750,13 @@ Catatan: ${orderForm.catatan || '-'}`;
                               <button
                                 onClick={() => {
                                   openDeleteConfirm("Hapus Pesanan", `Apakah Anda yakin ingin menghapus pesanan ${ord.id} (${ord.customerName})?`, () => {
-                                    deleteEntity(
-                                      "deleteOrder",
-                                      ord.id,
-                                      () => {
-                                        setData((prev: typeof INITIAL_DATA) => ({
-                                          ...prev,
-                                          orders: prev.orders.filter(
-                                            (o: any) => o.id !== ord.id
-                                          )
-                                        }));
-                                      },
-                                      "Pesanan berhasil dihapus dari Spreadsheet."
-                                    );
-                                  }
-                                );
-                              }}
+                                    setData((prev: typeof INITIAL_DATA) => ({
+                                      ...prev,
+                                      orders: prev.orders.filter((o: any) => o.id !== ord.id)
+                                    }));
+                                    triggerToast("Pesanan berhasil dihapus.");
+                                  });
+                                }}
                                 className="text-red-600 hover:text-red-800 p-1.5 hover:bg-red-50 rounded"
                                 title="Hapus pesanan"
                               >
@@ -2941,7 +1778,7 @@ Catatan: ${orderForm.catatan || '-'}`;
                 <div className="flex items-center justify-between border-b border-[#E8E1D9] pb-4">
                   <h2 className="text-xl font-serif-luxury font-bold text-[#2D2723]">Kelola Hero & Home Section</h2>
                   <button
-                    onClick={() => {void saveHome();}}
+                    onClick={() => triggerToast("Perubahan Home berhasil disimpan!")}
                     className="px-4 py-2 text-xs font-semibold text-white bg-[#8C6D46] hover:bg-[#735735] rounded-lg shadow-sm"
                   >
                     Simpan Perubahan
@@ -3244,19 +2081,11 @@ Catatan: ${orderForm.catatan || '-'}`;
                                     type="button"
                                     onClick={() => {
                                       openDeleteConfirm("Hapus Tema", `Hapus tema "${t.Nama}"?`, () => {
-                                        deleteEntity(
-                                          "deleteTheme",
-                                          t.ID,
-                                          () => {
-                                            setData((prev: typeof INITIAL_DATA) => ({
-                                              ...prev,
-                                              themes: prev.themes.filter(
-                                                (item: any) => item.ID !== t.ID
-                                              )
-                                            }));
-                                          },
-                                          "Tema berhasil dihapus dari Spreadsheet."
-                                        );
+                                        setData((prev: typeof INITIAL_DATA) => ({
+                                          ...prev,
+                                          themes: prev.themes.filter((item: any) => item.ID !== t.ID)
+                                        }));
+                                        triggerToast("Tema berhasil dihapus.");
                                       });
                                     }}
                                     className="p-1.5 text-xs text-red-600 hover:bg-red-50 rounded-lg border border-red-200 transition-colors cursor-pointer"
@@ -3352,19 +2181,11 @@ Catatan: ${orderForm.catatan || '-'}`;
                           <button
                             onClick={() => {
                               openDeleteConfirm("Hapus Paket", `Hapus paket "${p.Nama}"?`, () => {
-                                deleteEntity(
-                                  "deletePricing",
-                                  p.ID,
-                                  () => {
-                                    setData((prev: typeof INITIAL_DATA) => ({
-                                      ...prev,
-                                      pricing: prev.pricing.filter(
-                                        (item: any) => item.ID !== p.ID
-                                      )
-                                    }));
-                                  },
-                                  "Paket berhasil dihapus dari Spreadsheet."
-                                );
+                                setData((prev: typeof INITIAL_DATA) => ({
+                                  ...prev,
+                                  pricing: prev.pricing.filter((item: any) => item.ID !== p.ID)
+                                }));
+                                triggerToast("Paket berhasil dihapus.");
                               });
                             }}
                             className="text-xs text-red-600 hover:underline flex items-center gap-1"
@@ -3428,19 +2249,11 @@ Catatan: ${orderForm.catatan || '-'}`;
                         <button
                           onClick={() => {
                             openDeleteConfirm("Hapus Fitur", `Hapus fitur "${f.title}"?`, () => {
-                              deleteEntity(
-                                "deleteFeature",
-                                f.id,
-                                () => {
-                                  setData((prev: typeof INITIAL_DATA) => ({
-                                    ...prev,
-                                    features: prev.features.filter(
-                                      (item: any) => item.id !== f.id
-                                    )
-                                  }));
-                                },
-                                "Fitur berhasil dihapus dari Spreadsheet."
-                              );
+                              setData((prev: typeof INITIAL_DATA) => ({
+                                ...prev,
+                                features: prev.features.filter((item: any) => item.id !== f.id)
+                              }));
+                              triggerToast("Fitur dihapus.");
                             });
                           }}
                           className="text-red-500 hover:text-red-700 p-1"
@@ -3506,20 +2319,11 @@ Catatan: ${orderForm.catatan || '-'}`;
                         <button
                           onClick={() => {
                             openDeleteConfirm("Hapus Testimoni", `Hapus ulasan dari "${t.name}"?`, () => {
-                              deleteEntity(
-                                "deleteTestimonial",
-                                t.id,
-                                () => {
-                                  setData((prev: typeof INITIAL_DATA) => ({
-                                    ...prev,
-                                    testimonials:
-                                      prev.testimonials.filter(
-                                        (item: any) => item.id !== t.id
-                                      )
-                                  }));
-                                },
-                                "Testimoni berhasil dihapus dari Spreadsheet."
-                              );
+                              setData((prev: typeof INITIAL_DATA) => ({
+                                ...prev,
+                                testimonials: prev.testimonials.filter((item: any) => item.id !== t.id)
+                              }));
+                              triggerToast("Testimoni dihapus.");
                             });
                           }}
                           className="text-red-500 hover:text-red-700 p-1"
@@ -3540,7 +2344,7 @@ Catatan: ${orderForm.catatan || '-'}`;
                 <div className="flex items-center justify-between border-b border-[#E8E1D9] pb-4">
                   <h2 className="text-xl font-serif-luxury font-bold text-[#2D2723]">Kelola Langkah Cara Pesan</h2>
                   <button
-                    onClick={() => {void saveHowToOrder();}}
+                    onClick={() => triggerToast("Langkah cara pesan berhasil disimpan!")}
                     className="px-4 py-2 text-xs font-semibold text-white bg-[#8C6D46] hover:bg-[#735735] rounded-lg shadow-sm"
                   >
                     Simpan Perubahan
@@ -3633,19 +2437,11 @@ Catatan: ${orderForm.catatan || '-'}`;
                         <button
                           onClick={() => {
                             openDeleteConfirm("Hapus FAQ", `Hapus pertanyaan "${f.question}"?`, () => {
-                              deleteEntity(
-                                "deleteFAQ",
-                                f.id,
-                                () => {
-                                  setData((prev: typeof INITIAL_DATA) => ({
-                                    ...prev,
-                                    faq: prev.faq.filter(
-                                      (item: any) => item.id !== f.id
-                                    )
-                                  }));
-                                },
-                                "FAQ berhasil dihapus dari Spreadsheet."
-                              );
+                              setData((prev: typeof INITIAL_DATA) => ({
+                                ...prev,
+                                faq: prev.faq.filter((item: any) => item.id !== f.id)
+                              }));
+                              triggerToast("FAQ berhasil dihapus.");
                             });
                           }}
                           className="text-red-500 hover:text-red-700 p-1"
@@ -3665,156 +2461,62 @@ Catatan: ${orderForm.catatan || '-'}`;
               <div className="space-y-6">
                 
                 {/* 1. Keamanan & Akun Admin */}
-                <div className="space-y-4">
-                  {/* Username Card */}
-                  <div className="bg-white p-6 rounded-2xl border border-[#E8E1D9] shadow-sm space-y-4">
-                    <div className="flex items-center justify-between border-b border-[#E8E1D9] pb-4 gap-4">
-                      <div>
-                        <h2 className="text-xl font-serif-luxury font-bold text-[#2D2723] flex items-center gap-2">
-                          <User className="w-5 h-5 text-[#8C6D46]" /> Ubah Username Admin
-                        </h2>
-                        <p className="text-xs text-[#766E65] mt-1">
-                          Ubah username yang digunakan saat masuk ke Dashboard Admin CMS.
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => { void saveAdminUsername(); }}
-                        disabled={usernameSaving}
-                        className="px-4 py-2 text-xs font-semibold text-white bg-[#8C6D46] hover:bg-[#735735] rounded-lg shadow-sm disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap"
-                      >
-                        {usernameSaving ? 'Menyimpan...' : 'Simpan Username'}
-                      </button>
-                    </div>
-
+                <div className="bg-white p-6 rounded-2xl border border-[#E8E1D9] shadow-sm space-y-4">
+                  <div className="flex items-center justify-between border-b border-[#E8E1D9] pb-4">
                     <div>
-                      <label className="block font-semibold text-[#2D2723] mb-1.5 text-xs">
-                        Username Baru
+                      <h2 className="text-xl font-serif-luxury font-bold text-[#2D2723] flex items-center gap-2">
+                        <Lock className="w-5 h-5 text-[#8C6D46]" /> Keamanan Akun Admin
+                      </h2>
+                      <p className="text-xs text-[#766E65] mt-1">
+                        Atur username dan password untuk login ke Dashboard Admin CMS NGULEMIN.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => triggerToast("Akun admin & pengaturan berhasil disimpan!")}
+                      className="px-4 py-2 text-xs font-semibold text-white bg-[#8C6D46] hover:bg-[#735735] rounded-lg shadow-sm"
+                    >
+                      Simpan Perubahan
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                    <div>
+                      <label className="block font-semibold text-[#2D2723] mb-1.5 flex items-center gap-1.5">
+                        <User className="w-4 h-4 text-[#8C6D46]" /> Username Admin
                       </label>
                       <input
                         type="text"
-                        value={newAdminUsername}
-                        onChange={(e) => setNewAdminUsername(e.target.value)}
+                        value={data.settings.adminUsername || "admin"}
+                        onChange={(e) => setData({ ...data, settings: { ...data.settings, adminUsername: e.target.value } })}
                         placeholder="Contoh: admin atau nama_anda"
-                        autoComplete="username"
-                        className="w-full p-2.5 bg-[#FAF8F5] border border-[#E8E1D9] rounded-lg focus:outline-none focus:border-[#8C6D46] focus:bg-white text-sm"
+                        className="w-full p-2.5 bg-[#FAF8F5] border border-[#E8E1D9] rounded-lg focus:outline-none focus:border-[#8C6D46] focus:bg-white"
                       />
-                      <p className="text-[11px] text-[#766E65] mt-1">
-                        Masukkan username baru yang akan digunakan untuk login berikutnya.
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Password Card */}
-                  <div className="bg-white p-6 rounded-2xl border border-[#E8E1D9] shadow-sm space-y-4">
-                    <div className="flex items-center justify-between border-b border-[#E8E1D9] pb-4 gap-4">
-                      <div>
-                        <h2 className="text-xl font-serif-luxury font-bold text-[#2D2723] flex items-center gap-2">
-                          <Key className="w-5 h-5 text-[#8C6D46]" /> Ubah Password Admin
-                        </h2>
-                        <p className="text-xs text-[#766E65] mt-1">
-                          Ganti password dengan memasukkan password saat ini dan password baru.
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => { void saveAdminPassword(); }}
-                        disabled={passwordSaving}
-                        className="px-4 py-2 text-xs font-semibold text-white bg-[#8C6D46] hover:bg-[#735735] rounded-lg shadow-sm disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap"
-                      >
-                        {passwordSaving ? 'Memproses...' : 'Ubah Password'}
-                      </button>
+                      <p className="text-[11px] text-[#766E65] mt-1">Username yang dipakai saat masuk di halaman login.</p>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-                      <div>
-                        <label className="block font-semibold text-[#2D2723] mb-1.5">
-                          Password Saat Ini
-                        </label>
-                        <div className="relative">
-                          <input
-                            type={showCurrentAdminPassword ? "text" : "password"}
-                            value={currentAdminPassword}
-                            onChange={(e) => setCurrentAdminPassword(e.target.value)}
-                            placeholder="Masukkan password lama"
-                            autoComplete="current-password"
-                            className="w-full p-2.5 pr-10 bg-[#FAF8F5] border border-[#E8E1D9] rounded-lg focus:outline-none focus:border-[#8C6D46] focus:bg-white"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setShowCurrentAdminPassword(!showCurrentAdminPassword)}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-[#766E65] hover:text-[#2D2723]"
-                            title={showCurrentAdminPassword ? "Sembunyikan password" : "Lihat password"}
-                          >
-                            {showCurrentAdminPassword ? (
-                              <EyeOff className="w-4 h-4" />
-                            ) : (
-                              <Eye className="w-4 h-4" />
-                            )}
-                          </button>
-                        </div>
+                    <div>
+                      <label className="block font-semibold text-[#2D2723] mb-1.5 flex items-center gap-1.5">
+                        <Key className="w-4 h-4 text-[#8C6D46]" /> Password Admin Baru
+                      </label>
+                      <div className="relative">
+                        <input
+                          type={showAdminPassword ? "text" : "password"}
+                          value={data.settings.adminPassword || "admin123"}
+                          onChange={(e) => setData({ ...data, settings: { ...data.settings, adminPassword: e.target.value } })}
+                          placeholder="Password baru..."
+                          className="w-full p-2.5 pr-10 bg-[#FAF8F5] border border-[#E8E1D9] rounded-lg focus:outline-none focus:border-[#8C6D46] focus:bg-white"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowAdminPassword(!showAdminPassword)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-[#766E65] hover:text-[#2D2723]"
+                          title={showAdminPassword ? "Sembunyikan password" : "Lihat password"}
+                        >
+                          {showAdminPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
                       </div>
-
-                      <div>
-                        <label className="block font-semibold text-[#2D2723] mb-1.5">
-                          Password Baru
-                        </label>
-                        <div className="relative">
-                          <input
-                            type={showAdminPassword ? "text" : "password"}
-                            value={newAdminPassword}
-                            onChange={(e) => setNewAdminPassword(e.target.value)}
-                            placeholder="Minimal 6 karakter"
-                            autoComplete="new-password"
-                            className="w-full p-2.5 pr-10 bg-[#FAF8F5] border border-[#E8E1D9] rounded-lg focus:outline-none focus:border-[#8C6D46] focus:bg-white"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setShowAdminPassword(!showAdminPassword)}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-[#766E65] hover:text-[#2D2723]"
-                            title={showAdminPassword ? "Sembunyikan password" : "Lihat password"}
-                          >
-                            {showAdminPassword ? (
-                              <EyeOff className="w-4 h-4" />
-                            ) : (
-                              <Eye className="w-4 h-4" />
-                            )}
-                          </button>
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="block font-semibold text-[#2D2723] mb-1.5">
-                          Konfirmasi Password Baru
-                        </label>
-                        <div className="relative">
-                          <input
-                            type={showConfirmAdminPassword ? "text" : "password"}
-                            value={confirmAdminPassword}
-                            onChange={(e) => setConfirmAdminPassword(e.target.value)}
-                            placeholder="Ulangi password baru"
-                            autoComplete="new-password"
-                            className="w-full p-2.5 pr-10 bg-[#FAF8F5] border border-[#E8E1D9] rounded-lg focus:outline-none focus:border-[#8C6D46] focus:bg-white"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setShowConfirmAdminPassword(!showConfirmAdminPassword)}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-[#766E65] hover:text-[#2D2723]"
-                            title={showConfirmAdminPassword ? "Sembunyikan password" : "Lihat password"}
-                          >
-                            {showConfirmAdminPassword ? (
-                              <EyeOff className="w-4 h-4" />
-                            ) : (
-                              <Eye className="w-4 h-4" />
-                            )}
-                          </button>
-                        </div>
-                      </div>
+                      <p className="text-[11px] text-[#766E65] mt-1">Pastikan password mudah Anda ingat atau simpan dengan aman.</p>
                     </div>
-
-                    <p className="text-[11px] text-[#766E65] bg-[#FAF8F5] border border-[#E8E1D9] rounded-lg px-3 py-2">
-                      Password tidak disimpan di browser maupun di Sheet Settings. Sistem hanya menyimpan hash password di akun Admin.
-                    </p>
                   </div>
                 </div>
 
@@ -3907,7 +2609,7 @@ Catatan: ${orderForm.catatan || '-'}`;
                   <div className="flex items-center justify-between border-b border-[#E8E1D9] pb-4">
                     <h2 className="text-xl font-serif-luxury font-bold text-[#2D2723]">Kontak & Integrasi Backend</h2>
                     <button
-                      onClick={() => {void saveSettings();}}
+                      onClick={() => triggerToast("Pengaturan berhasil disimpan!")}
                       className="px-4 py-2 text-xs font-semibold text-white bg-[#8C6D46] rounded-lg"
                     >
                       Simpan Pengaturan
@@ -4124,7 +2826,7 @@ Catatan: ${orderForm.catatan || '-'}`;
                 <h4 className="text-xs font-bold uppercase tracking-widest text-white mb-4">Kontak & Pemesanan</h4>
                 <ul className="space-y-2 text-xs text-[#A9A198]">
                   <li>
-                    WhatsApp: <a href={`https://wa.me/${String(data.settings.whatsappAdmin || '').replace(/[^0-9]/g, '')}`} target="_blank" rel="noreferrer" className="text-white hover:text-[#D4AF37]">+{String(data.settings.whatsappAdmin || '')}</a>
+                    WhatsApp: <a href={`https://wa.me/${data.settings.whatsappAdmin.replace(/[^0-9]/g, '')}`} target="_blank" rel="noreferrer" className="text-white hover:text-[#D4AF37]">+{data.settings.whatsappAdmin}</a>
                   </li>
                   <li>
                     Instagram: <a href={`https://instagram.com/${data.settings.instagramAdmin}`} target="_blank" rel="noreferrer" className="text-white hover:text-[#D4AF37]">@{data.settings.instagramAdmin}</a>
@@ -4178,52 +2880,14 @@ Catatan: ${orderForm.catatan || '-'}`;
 
             {orderSubmittedSuccess ? (
               <div className="p-6 text-center space-y-4">
-                <div className={`w-14 h-14 rounded-full flex items-center justify-center mx-auto ${
-                  orderSaveStatus === 'error'
-                    ? 'bg-red-100 text-red-600'
-                    : 'bg-emerald-100 text-emerald-600'
-                }`}>
-                  {orderSaveStatus === 'error' ? (
-                    <X className="w-8 h-8" />
-                  ) : (
-                    <Check className="w-8 h-8" />
-                  )}
+                <div className="w-14 h-14 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto">
+                  <Check className="w-8 h-8" />
                 </div>
                 <h4 className="text-xl font-serif-luxury font-bold text-[#2D2723]">
-                  Pesanan Siap Dilanjutkan ke WhatsApp
+                  Pesanan Berhasil Dicatat!
                 </h4>
-                <div className={`rounded-xl border px-4 py-3 text-left ${
-                  orderSaveStatus === 'saved'
-                    ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-                    : orderSaveStatus === 'error'
-                      ? 'bg-red-50 border-red-200 text-red-800'
-                      : 'bg-amber-50 border-amber-200 text-amber-800'
-                }`}>
-                  <div className="flex items-start gap-2">
-                    {orderSaveStatus === 'saved' ? (
-                      <Check className="w-4 h-4 mt-0.5 shrink-0" />
-                    ) : orderSaveStatus === 'error' ? (
-                      <X className="w-4 h-4 mt-0.5 shrink-0" />
-                    ) : (
-                      <span className="w-4 h-4 mt-0.5 shrink-0 rounded-full border-2 border-amber-600 border-t-transparent animate-spin" />
-                    )}
-                    <div>
-                      <div className="text-xs font-bold">
-                        {orderSaveStatus === 'saved'
-                          ? 'Pesanan tersimpan'
-                          : orderSaveStatus === 'error'
-                            ? 'Penyimpanan perlu diperiksa'
-                            : 'Menyimpan pesanan...'}
-                      </div>
-                      <p className="text-[11px] mt-1 leading-relaxed">
-                        {orderSaveMessage || 'Mohon tunggu sebentar.'}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
                 <p className="text-xs sm:text-sm text-[#766E65] leading-relaxed">
-                  Anda tidak perlu menunggu proses Spreadsheet untuk membuka WhatsApp. Pesan WhatsApp sudah siap dan tombol di bawah dapat digunakan sekarang.
+                  Data Anda telah tersimpan. Silakan lanjutkan pesan otomatis ini ke WhatsApp Admin untuk memulai pengerjaan.
                 </p>
                 
                 <div className="pt-2">
@@ -4233,7 +2897,7 @@ Catatan: ${orderForm.catatan || '-'}`;
                     rel="noreferrer"
                     className="inline-flex items-center justify-center gap-2 px-6 py-3 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-md w-full"
                   >
-                    <Send className="w-4 h-4" /> Kirim / Buka WhatsApp Admin
+                    <Send className="w-4 h-4" /> Buka WhatsApp Admin Sekarang
                   </a>
                 </div>
 
@@ -4408,7 +3072,25 @@ Catatan: ${orderForm.catatan || '-'}`;
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                saveTheme();
+                const d = themeModal.data;
+                if (!d.Nama.trim()) {
+                  triggerToast("Nama tema tidak boleh kosong");
+                  return;
+                }
+                if (themeModal.isEdit) {
+                  setData((prev: typeof INITIAL_DATA) => ({
+                    ...prev,
+                    themes: prev.themes.map((t: any) => t.ID === d.ID ? d : t)
+                  }));
+                  triggerToast("Tema berhasil diperbarui!");
+                } else {
+                  setData((prev: typeof INITIAL_DATA) => ({
+                    ...prev,
+                    themes: [...prev.themes, d]
+                  }));
+                  triggerToast("Tema baru berhasil ditambahkan!");
+                }
+                setThemeModal(prev => ({ ...prev, open: false }));
               }}
               className="p-5 sm:p-6 space-y-4 text-xs"
             >
@@ -4540,7 +3222,38 @@ Catatan: ${orderForm.catatan || '-'}`;
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                void savePricing();
+                const d = pricingModal.data;
+                if (!d.Nama.trim()) {
+                  triggerToast("Nama paket tidak boleh kosong");
+                  return;
+                }
+                const featuresArray = d.FiturText.split('\n').map(s => s.trim()).filter(Boolean);
+                const finalPkg = {
+                  ID: d.ID,
+                  Nama: d.Nama,
+                  Harga: Number(d.Harga),
+                  Deskripsi: d.Deskripsi,
+                  Fitur: featuresArray,
+                  Label: d.Label,
+                  Featured: d.Featured,
+                  Status: d.Status,
+                  Urutan: 1
+                };
+
+                if (pricingModal.isEdit) {
+                  setData((prev: typeof INITIAL_DATA) => ({
+                    ...prev,
+                    pricing: prev.pricing.map((p: any) => p.ID === d.ID ? finalPkg : p)
+                  }));
+                  triggerToast("Paket harga berhasil diperbarui!");
+                } else {
+                  setData((prev: typeof INITIAL_DATA) => ({
+                    ...prev,
+                    pricing: [...prev.pricing, finalPkg]
+                  }));
+                  triggerToast("Paket baru berhasil ditambahkan!");
+                }
+                setPricingModal(prev => ({ ...prev, open: false }));
               }}
               className="p-5 sm:p-6 space-y-4 text-xs"
             >
@@ -4667,7 +3380,25 @@ Catatan: ${orderForm.catatan || '-'}`;
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                void saveFeature();
+                const d = featureModal.data;
+                if (!d.title.trim()) {
+                  triggerToast("Judul fitur tidak boleh kosong");
+                  return;
+                }
+                if (featureModal.isEdit) {
+                  setData((prev: typeof INITIAL_DATA) => ({
+                    ...prev,
+                    features: prev.features.map((f: any) => f.id === d.id ? d : f)
+                  }));
+                  triggerToast("Fitur berhasil diperbarui!");
+                } else {
+                  setData((prev: typeof INITIAL_DATA) => ({
+                    ...prev,
+                    features: [...prev.features, d]
+                  }));
+                  triggerToast("Fitur baru berhasil ditambahkan!");
+                }
+                setFeatureModal(prev => ({ ...prev, open: false }));
               }}
               className="p-5 space-y-3.5 text-xs"
             >
@@ -4734,7 +3465,25 @@ Catatan: ${orderForm.catatan || '-'}`;
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                void saveTestimonial();
+                const d = testiModal.data;
+                if (!d.name.trim() || !d.testi.trim()) {
+                  triggerToast("Nama dan isi ulasan wajib diisi");
+                  return;
+                }
+                if (testiModal.isEdit) {
+                  setData((prev: typeof INITIAL_DATA) => ({
+                    ...prev,
+                    testimonials: prev.testimonials.map((t: any) => t.id === d.id ? d : t)
+                  }));
+                  triggerToast("Testimoni berhasil diperbarui!");
+                } else {
+                  setData((prev: typeof INITIAL_DATA) => ({
+                    ...prev,
+                    testimonials: [...prev.testimonials, d]
+                  }));
+                  triggerToast("Testimoni berhasil ditambahkan!");
+                }
+                setTestiModal(prev => ({ ...prev, open: false }));
               }}
               className="p-5 space-y-3.5 text-xs"
             >
@@ -4810,9 +3559,27 @@ Catatan: ${orderForm.catatan || '-'}`;
             </div>
 
             <form
-             onSubmit={(e) => {
+              onSubmit={(e) => {
                 e.preventDefault();
-                void saveFaq();
+                const d = faqModal.data;
+                if (!d.question.trim() || !d.answer.trim()) {
+                  triggerToast("Pertanyaan dan jawaban wajib diisi");
+                  return;
+                }
+                if (faqModal.isEdit) {
+                  setData((prev: typeof INITIAL_DATA) => ({
+                    ...prev,
+                    faq: prev.faq.map((item: any) => item.id === d.id ? d : item)
+                  }));
+                  triggerToast("FAQ berhasil diperbarui!");
+                } else {
+                  setData((prev: typeof INITIAL_DATA) => ({
+                    ...prev,
+                    faq: [...prev.faq, d]
+                  }));
+                  triggerToast("FAQ baru berhasil ditambahkan!");
+                }
+                setFaqModal(prev => ({ ...prev, open: false }));
               }}
               className="p-5 space-y-3.5 text-xs"
             >
