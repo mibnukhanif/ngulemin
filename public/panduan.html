@@ -57,6 +57,16 @@
     .toc a:hover{background:var(--surface-alt);color:var(--text);text-decoration:none;transform:translateX(2px)}
     .toc a.active{background:#F6EFE4;color:var(--primary);font-weight:700}
     .toc-note{margin-top:auto;padding:12px 10px 0;color:var(--muted);font-size:10px;border-top:1px solid var(--border);line-height:1.55}
+
+    .toc-contact{display:none;color:#FFFFFF!important;background:#25D366!important;border:1px solid #25D366!important;text-decoration:none}
+  
+      .toc-contact-separator{display:block;order:2;margin:14px 0 10px;background:#CFC6BC}
+      .toc-contact{display:flex!important;order:3;width:100%;min-height:44px;box-sizing:border-box;padding:12px 14px;margin:0;align-items:center;justify-content:center;text-align:center;gap:0;background:#25D366!important;border:1px solid #25D366!important;border-radius:9px;color:#FFFFFF!important;font-size:12px;line-height:1.35;font-weight:700;text-decoration:none;white-space:nowrap;flex:0 0 auto}
+      .toc-contact span{color:#FFFFFF!important;-webkit-text-fill-color:#FFFFFF!important}
+      .toc-contact:hover,.toc-contact:focus{background:#25D366!important;border-color:#25D366!important;color:#FFFFFF!important;text-decoration:none}
+      .toc-note{order:4;flex:0 0 auto;margin-top:10px;padding-top:10px}
+  .toc-contact-separator{display:none;width:100%;height:1px;background:#D9D2CA;margin:12px 0 12px}
+
     .toc-backdrop{display:none!important}
     .toc-backdrop.show{display:none!important}
     .page-main{min-width:0}
@@ -109,19 +119,24 @@
       .toc{top:64px;width:min(86vw,320px)}
     }
     @media (max-width:640px){
-      .topbar-inner{padding:10px 14px;gap:10px}
+      .topbar{position:sticky}
+      .topbar-inner{padding:10px 12px;gap:10px}
       .layout{padding:16px 12px 56px}
       .hero{padding:24px 18px}
       .card{padding:18px}
       .brand{font-size:24px}
       .top-actions{gap:7px}
       .top-actions .btn{padding:8px 10px;font-size:11px}
-      .top-actions .btn-contact{padding:8px 10px;font-size:11px}
-      .menu-toggle .menu-label{display:none}
-      .toc{top:60px}
-      .toc a{padding:10px 10px}
+      .menu-toggle .menu-label{display:inline}
+      .menu-toggle{padding:8px 10px}
+      .toc{position:fixed;left:12px;right:12px;top:58px;bottom:auto;width:auto;max-height:0;padding:0 12px;border:1px solid var(--border);border-radius:14px;box-shadow:0 16px 34px rgba(45,39,35,.12);overflow:hidden;opacity:0;visibility:hidden;transform:translateY(-8px);transition:max-height .24s ease,opacity .2s ease,transform .2s ease,visibility .2s ease;z-index:100;background:#fff}
+      .toc.open{max-height:calc(100vh - 74px);padding:12px;opacity:1;visibility:visible;transform:translateY(0);box-shadow:0 18px 38px rgba(45,39,35,.14)}
+      .toc-inner{min-height:0;max-height:calc(100vh - 104px);overflow-y:auto;display:flex;flex-direction:column}
+      .toc-head{position:sticky;top:0;background:#fff;padding:2px 0 10px;margin-bottom:8px;z-index:1}
+      .toc a{padding:10px 10px;font-size:12px}
+      .toc-note{margin-top:10px;padding-top:10px}
     }
-  </style>
+</style>
 </head>
 <body>
   <header class="topbar">
@@ -132,7 +147,6 @@
       </button>
       <a href="/" class="brand">NGULEMIN</a>
       <div class="top-actions">
-        <a class="btn btn-contact" href="https://wa.me/6285155284564?text=Halo%20Admin%20NGULEMIN%2C%20saya%20ingin%20dipandu%20cara%20instalasi%20website.%20Saya%20sedang%20mengikuti%20panduan%20instalasi%20dan%20membutuhkan%20bantuan." target="_blank" rel="noreferrer">Hubungi Admin</a>
         <a class="btn btn-primary" href="#mulai">Mulai Instalasi</a>
       </div>
     </div>
@@ -158,7 +172,16 @@
         <a href="#admin">9. Kelola Admin</a>
         <a href="#resale">10. Untuk Pembeli</a>
         <a href="#masalah">11. Troubleshooting</a>
+        <div class="toc-contact-separator" aria-hidden="true"></div>
+        <a href="https://wa.me/6285155284564?text=Halo%20Admin%20NGULEMIN%2C%20saya%20ingin%20dipandu%20cara%20instalasi%20website.%20Saya%20sedang%20mengikuti%20panduan%20instalasi%20dan%20membutuhkan%20bantuan."
+           class="toc-contact btn btn-contact"
+           target="_blank"
+           rel="noreferrer"
+           aria-label="Hubungi Admin melalui WhatsApp">
+          <span>Hubungi Admin</span>
+        </a>
         <div class="toc-note">Gunakan <strong>Daftar Isi</strong> untuk berpindah cepat antar bagian panduan.</div>
+      
       </div>
     </aside>
 
@@ -496,6 +519,13 @@ if (typeof window !== "undefined") {
           if (window.innerWidth <= 900) closeToc();
         });
       });
+
+      var mobileContact = toc ? toc.querySelector('.toc-contact') : null;
+      if (mobileContact) {
+        mobileContact.addEventListener('click', function () {
+          if (window.innerWidth <= 640) closeToc();
+        });
+      }
 
       var sections = document.querySelectorAll('.anchor[id]');
       if ('IntersectionObserver' in window) {
