@@ -539,33 +539,73 @@ Catatan: ${orderForm.catatan || '-'}`;
   };
 
   // Handle Admin Login
-  const handleLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoginLoading(true);
-    setLoginError('');
+const handleLogin = async (e: React.FormEvent) => {
+  e.preventDefault();
+  setLoginLoading(true);
+  setLoginError('');
 
-    setTimeout(() => {
-      const validUser = (data.settings.adminUsername || 'admin').trim();
-      const validPass = (data.settings.adminPassword || 'admin123').trim();
+  const apiUrl = (
+    data.settings.apiUrl ||
+    ((window as any).CONFIG?.API_URL as string) ||
+    ''
+  ).trim();
 
-      const isUserValid = loginUser.trim().toLowerCase() === validUser.toLowerCase() ||
-                          loginUser.trim().toLowerCase() === 'admin' ||
-                          loginUser.trim().toLowerCase() === 'admin@ngulemin.id';
-      const isPassValid = loginPass === validPass || loginPass === 'admin123';
+  if (!apiUrl) {
+    setLoginError('URL Google Apps Script belum dikonfigurasi.');
+    setLoginLoading(false);
+    return;
+  }
 
-      if (isUserValid && isPassValid) {
-        const dummyToken = 'NGU_TOKEN_' + Date.now();
-        localStorage.setItem('ngulemin_admin_token', dummyToken);
-        localStorage.setItem('ngulemin_admin_user', loginUser);
-        setAdminToken(dummyToken);
-        setCurrentView('dashboard');
-        triggerToast("Selamat datang di Admin Dashboard NGULEMIN!");
-      } else {
-        setLoginError(`Username atau password salah. Coba: ${validUser} / ${validPass}`);
-      }
-      setLoginLoading(false);
-    }, 400);
-  };
+  try {
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'text/plain;charset=utf-8'
+      },
+      body: JSON.stringify({
+        action: 'login',
+        username: loginUser.trim(),
+        password: loginPass
+      })
+    });
+
+    const result = await response.json();
+
+    if (!result.success || !result.data?.token) {
+      throw new Error(
+        result.message || 'Username atau password salah.'
+      );
+    }
+
+    const token = result.data.token;
+
+    localStorage.setItem(
+      'ngulemin_admin_token',
+      token
+    );
+
+    localStorage.setItem(
+      'ngulemin_admin_user',
+      result.data.username || loginUser.trim()
+    );
+
+    setAdminToken(token);
+    setCurrentView('dashboard');
+
+    triggerToast(
+      'Login berhasil. Terhubung ke Google Apps Script.'
+    );
+  } catch (error: any) {
+    console.error('Login Error:', error);
+
+    setLoginError(
+      error.message ||
+      'Gagal terhubung ke Google Apps Script.'
+    );
+  } finally {
+    setLoginLoading(false);
+  }
+};
 
   const handleLogout = () => {
     localStorage.removeItem('ngulemin_admin_token');
@@ -3073,7 +3113,7 @@ Catatan: ${orderForm.catatan || '-'}`;
             </div>
 
             <form
-              onSubmit={(e) => {
+              onSubmit={async (e) => {
                 e.preventDefault();
                 const d = themeModal.data;
                 if (!d.Nama.trim()) {
@@ -3081,19 +3121,90 @@ Catatan: ${orderForm.catatan || '-'}`;
                   return;
                 }
                 if (themeModal.isEdit) {
-                  setData((prev: typeof INITIAL_DATA) => ({
-                    ...prev,
-                    themes: prev.themes.map((t: any) => t.ID === d.ID ? d : t)
-                  }));
-                  triggerToast("Tema berhasil diperbarui!");
-                } else {
-                  setData((prev: typeof INITIAL_DATA) => ({
-                    ...prev,
-                    themes: [...prev.themes, d]
-                  }));
-                  triggerToast("Tema baru berhasil ditambahkan!");
-                }
-                setThemeModal(prev => ({ ...prev, open: false }));
+  try {
+    const apiUrl =
+      (data.settings.apiUrl ||
+        ((window as any).CONFIG?.API_URL as string) ||
+        "").trim();
+
+    if (!apiUrl) {
+      throw new Error("URL Google Apps Script belum tersedia.");
+    }
+
+    const response = await fetch(apiUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "text/plain;charset=utf-8"
+      },
+      body: JSON.stringify({
+  action: "updateTheme",
+  token: adminToken,
+  data: d
+})
+    });
+
+    const result = await response.json();
+
+    if (!result.success) {
+      throw new Error(result.message || "Gagal memperbarui tema.");
+    }
+
+    setData((prev: typeof INITIAL_DATA) => ({
+      ...prev,
+      themes: prev.themes.map((t: any) =>
+        t.ID === d.ID ? d : t
+      )
+    }));
+
+    triggerToast("Tema berhasil diperbarui di Spreadsheet!");
+  } catch (error: any) {
+    console.error("Update Theme Error:", error);
+    triggerToast(error.message || "Gagal memperbarui tema.");
+    return;
+  }
+} else {
+  try {
+    const apiUrl =
+      (data.settings.apiUrl ||
+        ((window as any).CONFIG?.API_URL as string) ||
+        "").trim();
+
+    if (!apiUrl) {
+      throw new Error("URL Google Apps Script belum tersedia.");
+    }
+
+    const response = await fetch(apiUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "text/plain;charset=utf-8"
+      },
+      body: JSON.stringify({
+  action: "createTheme",
+  token: adminToken,
+  data: d
+})
+    });
+
+    const result = await response.json();
+
+    if (!result.success) {
+      throw new Error(result.message || "Gagal menambahkan tema.");
+    }
+
+    setData((prev: typeof INITIAL_DATA) => ({
+      ...prev,
+      themes: [...prev.themes, d]
+    }));
+
+    triggerToast("Tema baru berhasil ditambahkan ke Spreadsheet!");
+  } catch (error: any) {
+    console.error("Create Theme Error:", error);
+    triggerToast(error.message || "Gagal menambahkan tema.");
+    return;
+  }
+}
+
+setThemeModal(prev => ({ ...prev, open: false }));
               }}
               className="p-5 sm:p-6 space-y-4 text-xs"
             >
