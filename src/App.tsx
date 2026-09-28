@@ -616,6 +616,12 @@ export default function App() {
     return { ...INITIAL_DATA };
   });
 
+  // Katalog publik tidak dirender dari cache/default sebelum sinkronisasi server pertama selesai.
+  // Ini mencegah tema bawaan/tema lama tampil sesaat lalu terganti tema hasil CMS.
+  const [publicDataReady, setPublicDataReady] = useState<boolean>(
+    () => !getConfiguredApiUrl()
+  );
+
   const lastServerDataRef = useRef<any>(data);
   const persistTimerRef = useRef<number | null>(null);
 
@@ -889,9 +895,11 @@ export default function App() {
 
       lastServerDataRef.current = normalized;
       setData(normalized);
+      setPublicDataReady(true);
       return true;
     } catch (error: any) {
       console.warn('Background data refresh failed:', error);
+      setPublicDataReady(true);
       if (showError) {
         triggerToast(
           error.message || 'Gagal menyegarkan data dari Spreadsheet.'
@@ -967,7 +975,7 @@ export default function App() {
     data.settings.siteName
   ]);
 
-  // Tampilkan cache lokal segera, lalu sinkronkan data publik di background.
+  // Sinkronkan data publik di background. Katalog tema menunggu sinkronisasi pertama agar tidak menampilkan data lama/default.
   useEffect(() => {
     void refreshAllData(false);
   }, []);
@@ -2396,6 +2404,18 @@ Catatan: ${orderForm.catatan || '-'}`;
                 </p>
               </div>
 
+              {!publicDataReady ? (
+                <div className="max-w-4xl mx-auto py-12 px-4 bg-white rounded-2xl border border-[#E8E1D9]">
+                  <div className="flex flex-col items-center justify-center text-center">
+                    <RefreshCw className="w-8 h-8 text-[#8C6D46] animate-spin mb-4" />
+                    <h4 className="text-base font-bold text-[#2D2723]">Memuat tema undangan...</h4>
+                    <p className="text-xs text-[#766E65] mt-1">
+                      Mengambil katalog terbaru dari dashboard CMS.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <>
               {/* Category Filter Menu Buttons */}
               <div className="w-full max-w-4xl mx-auto mb-10 px-2 sm:px-0">
                 <div className="flex items-center justify-start sm:justify-center gap-2 sm:gap-2.5 overflow-x-auto pb-2.5 sm:pb-0 px-1 sm:px-0 sm:flex-wrap no-scrollbar">
@@ -2518,6 +2538,8 @@ Catatan: ${orderForm.catatan || '-'}`;
                   </div>
                 );
               })()}
+                </>
+              )}
 
             </div>
           </section>
