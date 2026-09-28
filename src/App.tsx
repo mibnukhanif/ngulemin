@@ -87,11 +87,7 @@ const INITIAL_DATA = {
     button1Link: "#tema",
     button2Text: "Pesan Sekarang",
     button2Link: "#pesan",
-    heroImage: heroMockup,
-    heroImageLink: "https://ngulemin.id/preview/elegant-rose",
-    happyCouples: "500+",
-    satisfactionRating: "4.9/5",
-    fastProcess: "1-24 Jam"
+    heroImage: heroMockup
   },
   themes: [
     {
@@ -423,19 +419,7 @@ const normalizeApiData = (apiData: any, currentData: any) => {
 
     home: {
       ...currentData.home,
-      ...(apiData.home || {}),
-      badge: String(apiData.home?.badge ?? currentData.home?.badge ?? "UNDANGAN DIGITAL"),
-      title: String(apiData.home?.title ?? currentData.home?.title ?? ""),
-      description: String(apiData.home?.description ?? currentData.home?.description ?? ""),
-      button1Text: String(apiData.home?.button1Text ?? currentData.home?.button1Text ?? "Lihat Tema"),
-      button1Link: String(apiData.home?.button1Link ?? currentData.home?.button1Link ?? "#tema"),
-      button2Text: String(apiData.home?.button2Text ?? currentData.home?.button2Text ?? "Pesan Sekarang"),
-      button2Link: String(apiData.home?.button2Link ?? currentData.home?.button2Link ?? "#pesan"),
-      heroImage: String(apiData.home?.heroImage ?? currentData.home?.heroImage ?? ""),
-      heroImageLink: String(apiData.home?.heroImageLink ?? currentData.home?.heroImageLink ?? ""),
-      happyCouples: String(apiData.home?.happyCouples ?? currentData.home?.happyCouples ?? "500+"),
-      satisfactionRating: String(apiData.home?.satisfactionRating ?? currentData.home?.satisfactionRating ?? "4.9/5"),
-      fastProcess: String(apiData.home?.fastProcess ?? currentData.home?.fastProcess ?? "1-24 Jam")
+      ...(apiData.home || {})
     },
 
     themes: Array.isArray(apiData.themes)
@@ -456,18 +440,34 @@ const normalizeApiData = (apiData: any, currentData: any) => {
         })
       : currentData.themes,
 
-    categories: Array.from(
-      new Set([
-        ...(currentData.categories || []),
-        ...(Array.isArray(apiData.themes)
-          ? apiData.themes
-              .map((theme: any) => theme.Category)
-              .filter((category: any) =>
-                typeof category === "string" && category.trim() !== ""
-              )
-          : [])
-      ])
-    ),
+    // Kategori sekarang disimpan persisten di Settings.categories.
+    // Backend lama belum memiliki sheet Categories, jadi kita gunakan
+    // sheet Settings yang sudah tersedia dan kompatibel dengan API lama.
+    categories: (() => {
+      const hasPersistedCategories = Object.prototype.hasOwnProperty.call(
+        apiData.settings || {},
+        "categories"
+      );
+      const rawCategories = apiData.settings?.categories;
+
+      if (Array.isArray(rawCategories)) {
+        return rawCategories
+          .map((category: any) => String(category).trim())
+          .filter(Boolean);
+      }
+
+      if (typeof rawCategories === "string") {
+        // updateSettingsData() di Code.gs menyimpan array sebagai baris baru.
+        // String kosong berarti user memang sudah menghapus semua kategori.
+        return rawCategories
+          .split(/\r?\n|,/)
+          .map((category: string) => category.trim())
+          .filter(Boolean);
+      }
+
+      // Kompatibilitas dengan database lama yang belum punya Settings.categories.
+      return hasPersistedCategories ? [] : (currentData.categories || []);
+    })(),
 
     pricing: Array.isArray(apiData.pricing)
       ? apiData.pricing.map((pkg: any) => ({
@@ -894,35 +894,6 @@ export default function App() {
     }
   };
 
-  // Terapkan identitas dan metadata website dari Settings.
-  useEffect(() => {
-    if (typeof document === 'undefined') return;
-
-    const title = String(
-      data.settings.metaTitle ||
-      data.settings.siteName ||
-      'NGULEMIN'
-    ).trim();
-
-    const description = String(data.settings.metaDescription || '').trim();
-
-    document.title = title;
-
-    if (description) {
-      let meta = document.querySelector('meta[name="description"]') as HTMLMetaElement | null;
-      if (!meta) {
-        meta = document.createElement('meta');
-        meta.name = 'description';
-        document.head.appendChild(meta);
-      }
-      meta.content = description;
-    }
-  }, [
-    data.settings.metaTitle,
-    data.settings.metaDescription,
-    data.settings.siteName
-  ]);
-
   // Tampilkan cache lokal segera, lalu sinkronkan data publik di background.
   useEffect(() => {
     void refreshAllData(false);
@@ -1052,6 +1023,45 @@ export default function App() {
         }));
         triggerToast(
           error.message || 'Gagal memperbarui status pesanan.'
+        );
+      });
+  };
+
+  /**
+   * Simpan daftar kategori secara persisten ke Google Spreadsheet melalui
+   * action updateSettings. Tidak membutuhkan sheet Categories baru.
+   */
+  const saveCategories = (updatedCategories: string[], previousCategories: string[]) => {
+    const cleanCategories = Array.from(
+      new Set(
+        updatedCategories
+          .map((category) => category.trim())
+          .filter(Boolean)
+      )
+    );
+
+    setData((prev: typeof INITIAL_DATA) => ({
+      ...prev,
+      categories: cleanCategories
+    }));
+
+    void callApi('updateSettings', {
+      data: { categories: cleanCategories }
+    })
+      .then(() => {
+        lastServerDataRef.current = {
+          ...lastServerDataRef.current,
+          categories: cleanCategories
+        };
+        triggerToast('Kategori berhasil disimpan ke Spreadsheet!');
+      })
+      .catch((error: any) => {
+        setData((prev: typeof INITIAL_DATA) => ({
+          ...prev,
+          categories: previousCategories
+        }));
+        triggerToast(
+          error.message || 'Gagal menyimpan kategori ke Spreadsheet.'
         );
       });
   };
@@ -1449,64 +1459,17 @@ export default function App() {
       });
   };
 
-  const renumberHowToOrder = (items: any[]) => {
-    return items.map((step: any, index: number) => ({
-      ...step,
-      num: String(index + 1).padStart(2, '0')
-    }));
-  };
-
-  const addHowToOrderStep = () => {
-    const updated = renumberHowToOrder([
-      ...data.howToOrder,
-      { num: '', title: '', desc: '', icon: 'FileText', status: 'Aktif' }
-    ]);
-
-    setData((prev: typeof INITIAL_DATA) => ({
-      ...prev,
-      howToOrder: updated
-    }));
-
-    triggerToast('Langkah baru ditambahkan. Nomor otomatis disesuaikan.');
-  };
-
-  const deleteHowToOrderStep = (indexToDelete: number) => {
-    const step = data.howToOrder[indexToDelete];
-
-    openDeleteConfirm(
-      'Hapus Langkah Cara Pesan',
-      `Hapus langkah "${step?.title || `Nomor ${indexToDelete + 1}`}"? Nomor langkah setelahnya akan otomatis disesuaikan.`,
-      () => {
-        const updated = renumberHowToOrder(
-          data.howToOrder.filter((_item: any, index: number) => index !== indexToDelete)
-        );
-
-        setData((prev: typeof INITIAL_DATA) => ({
-          ...prev,
-          howToOrder: updated
-        }));
-
-        triggerToast('Langkah dihapus. Nomor urut otomatis disesuaikan.');
-      }
-    );
-  };
-
   const saveHowToOrder = () => {
-    const normalizedSteps = renumberHowToOrder(data.howToOrder);
-
-    setData((prev: typeof INITIAL_DATA) => ({
-      ...prev,
-      howToOrder: normalizedSteps
-    }));
-
-    const rows = normalizedSteps.map((step: any, index: number) => ({
-      Nomor: String(index + 1).padStart(2, '0'),
-      Judul: step.title,
-      Deskripsi: step.desc,
-      Icon: step.icon || 'FileText',
-      Status: step.status || 'Aktif',
-      Urutan: index + 1
-    }));
+    const rows = data.howToOrder.map(
+      (step: any, index: number) => ({
+        Nomor: step.num || String(index + 1).padStart(2, '0'),
+        Judul: step.title,
+        Deskripsi: step.desc,
+        Icon: step.icon || 'FileText',
+        Status: step.status || 'Aktif',
+        Urutan: index + 1
+      })
+    );
 
     triggerToast('Cara Pesan diperbarui...');
 
@@ -1530,36 +1493,6 @@ export default function App() {
       .catch((error: any) => {
         void refreshAllData(false);
         triggerToast(error.message || 'Gagal menyimpan Home.');
-      });
-  };
-
-  const saveBrandIdentity = () => {
-    const brandSettings = {
-      logoUrl: String(data.settings.logoUrl || '').trim(),
-      siteName: String(data.settings.siteName || '').trim(),
-      tagline: String(data.settings.tagline || '').trim()
-    };
-
-    if (!brandSettings.siteName) {
-      triggerToast('Nama Brand / Website tidak boleh kosong.');
-      return;
-    }
-
-    triggerToast('Menyimpan identitas navbar...');
-
-    void callApi('updateSettings', { data: brandSettings })
-      .then(() => {
-        setData((prev: typeof INITIAL_DATA) => ({
-          ...prev,
-          settings: {
-            ...prev.settings,
-            ...brandSettings
-          }
-        }));
-        triggerToast('Logo, nama brand, dan tagline berhasil disimpan.');
-      })
-      .catch((error: any) => {
-        triggerToast(error.message || 'Gagal menyimpan identitas navbar.');
       });
   };
 
@@ -2272,21 +2205,15 @@ Catatan: ${orderForm.catatan || '-'}`;
                 {/* Social Proof Claim */}
                 <div className="mt-10 pt-6 border-t border-[#E8E1D9] flex items-center justify-center lg:justify-start gap-6 text-xs text-[#766E65]">
                   <div>
-                    <span className="font-bold text-sm text-[#2D2723]">
-                      {data.home.happyCouples || "500+"}
-                    </span>{" "}Pasangan Bahagia
+                    <span className="font-bold text-sm text-[#2D2723]">500+</span> Pasangan Bahagia
                   </div>
                   <span aria-hidden="true">·</span>
                   <div>
-                    <span className="font-bold text-sm text-[#2D2723]">
-                      {data.home.satisfactionRating || "4.9/5"}
-                    </span>{" "}Rating Kepuasan
+                    <span className="font-bold text-sm text-[#2D2723]">4.9/5</span> Rating Kepuasan
                   </div>
                   <span aria-hidden="true">·</span>
                   <div>
-                    <span className="font-bold text-sm text-[#2D2723]">
-                      {data.home.fastProcess || "1-24 Jam"}
-                    </span>{" "}Proses Cepat
+                    <span className="font-bold text-sm text-[#2D2723]">1-24 Jam</span> Proses Cepat
                   </div>
                 </div>
               </div>
@@ -2294,35 +2221,20 @@ Catatan: ${orderForm.catatan || '-'}`;
               {/* Hero Image Mockup Carrier */}
               <div className="lg:col-span-5 relative">
                 <div className="relative mx-auto max-w-md rounded-2xl overflow-hidden shadow-2xl border border-[#E8E1D9] bg-white group">
-                  <a
-                    href={data.home.heroImageLink?.trim() || "#tema"}
-                    target={data.home.heroImageLink?.trim() ? "_blank" : undefined}
-                    rel={data.home.heroImageLink?.trim() ? "noopener noreferrer" : undefined}
-                    aria-label="Buka link gambar hero"
-                    className="block"
-                  >
-                    <img
-                      src={data.home.heroImage || heroMockup}
-                      alt="Mockup Undangan Digital NGULEMIN"
-                      className="w-full h-auto object-cover transform transition-transform duration-700 group-hover:scale-105"
-                      referrerPolicy="no-referrer"
-                    />
-                  </a>
-
+                  <img
+                    src={data.home.heroImage || heroMockup}
+                    alt="Mockup Undangan Digital NGULEMIN"
+                    className="w-full h-auto object-cover transform transition-transform duration-700 group-hover:scale-105"
+                    referrerPolicy="no-referrer"
+                  />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent pointer-events-none"></div>
-
                   <div className="absolute bottom-4 left-4 right-4 bg-white/95 backdrop-blur-md p-3.5 rounded-xl border border-[#E8E1D9] shadow-sm flex items-center justify-between">
                     <div>
                       <div className="text-xs font-bold text-[#2D2723]">Preview Langsung di Smartphone</div>
                       <div className="text-[11px] text-[#766E65]">Responsif · Dilengkapi Musik & Navigasi</div>
                     </div>
-
-                    <a
-                      href={
-                        data.home.heroImageLink?.trim() ||
-                        data.themes[0]?.PreviewURL ||
-                        "https://ngulemin.id/preview/demo"
-                      }
+                    <a 
+                      href={data.themes[0]?.PreviewURL || "https://ngulemin.id/preview/demo"}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-xs font-semibold text-[#8C6D46] hover:underline flex items-center gap-1"
@@ -2859,7 +2771,7 @@ Catatan: ${orderForm.catatan || '-'}`;
               <div className="pt-4 border-t border-[#38332E] space-y-2">
                 <button
                   type="button"
-                  onClick={() => {window.location.href = 'https://nguleminofficial.vercel.app/panduan.html';}}
+                  onClick={() => setCurrentView('guide')}
                   className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-[#D4AF37] hover:bg-white/5 cursor-pointer"
                 >
                   <FileText className="w-4 h-4" />
@@ -2961,7 +2873,7 @@ Catatan: ${orderForm.catatan || '-'}`;
                       Lihat Pesanan Masuk ({data.orders.length})
                     </button>
                     <button
-                      onClick={() => {window.location.href = 'https://nguleminofficial.vercel.app/panduan.html';}}
+                      onClick={() => setCurrentView('guide')}
                       className="px-4 py-2 text-xs font-semibold text-[#8C6D46] border border-[#8C6D46] rounded-lg"
                     >
                       Buka Panduan Code.gs
@@ -3078,211 +2990,64 @@ Catatan: ${orderForm.catatan || '-'}`;
               </div>
             )}
 
-            {/* HOME & HERO EDITOR */}
+            {/* HOME EDITOR */}
             {dashTab === 'home' && (
-              <div className="space-y-6">
-                <div className="bg-white p-6 rounded-2xl border border-[#E8E1D9] shadow-sm space-y-5">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-[#E8E1D9] pb-4 gap-3">
-                    <div>
-                      <h2 className="text-xl font-serif-luxury font-bold text-[#2D2723]">
-                        Kelola Home & Hero
-                      </h2>
-                      <p className="text-xs text-[#766E65] mt-1">
-                        Ubah konten Hero, gambar Hero, link gambar, dan statistik yang tampil di halaman utama.
-                      </p>
-                    </div>
+              <div className="bg-white p-6 rounded-2xl border border-[#E8E1D9] shadow-sm space-y-4">
+                <div className="flex items-center justify-between border-b border-[#E8E1D9] pb-4">
+                  <h2 className="text-xl font-serif-luxury font-bold text-[#2D2723]">Kelola Hero & Home Section</h2>
+                  <button
+                    onClick={() => {void saveHome();}}
+                    className="px-4 py-2 text-xs font-semibold text-white bg-[#8C6D46] hover:bg-[#735735] rounded-lg shadow-sm"
+                  >
+                    Simpan Perubahan
+                  </button>
+                </div>
 
-                    <button
-                      type="button"
-                      onClick={() => { void saveHome(); }}
-                      className="px-4 py-2 text-xs font-semibold text-white bg-[#8C6D46] hover:bg-[#735735] rounded-lg shadow-sm whitespace-nowrap"
-                    >
-                      Simpan Semua Perubahan
-                    </button>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                  <div className="sm:col-span-2">
+                    <label className="block font-semibold mb-1">Badge Teks</label>
+                    <input
+                      type="text"
+                      value={data.home.badge}
+                      onChange={(e) => setData({ ...data, home: { ...data.home, badge: e.target.value } })}
+                      className="w-full p-2.5 bg-[#FAF8F5] border border-[#E8E1D9] rounded-lg focus:outline-none focus:border-[#8C6D46]"
+                    />
                   </div>
-
-                  {/* Konten Hero */}
-                  <div className="space-y-4">
-                    <div className="text-xs font-bold uppercase tracking-wider text-[#8C6D46]">
-                      Konten Hero
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-                      <div className="sm:col-span-2">
-                        <label className="block font-semibold mb-1">Badge Teks</label>
-                        <input
-                          type="text"
-                          value={data.home.badge || ''}
-                          onChange={(e) => setData({ ...data, home: { ...data.home, badge: e.target.value } })}
-                          className="w-full p-2.5 bg-[#FAF8F5] border border-[#E8E1D9] rounded-lg focus:outline-none focus:border-[#8C6D46]"
-                        />
-                      </div>
-
-                      <div className="sm:col-span-2">
-                        <label className="block font-semibold mb-1">Judul Utama Hero</label>
-                        <input
-                          type="text"
-                          value={data.home.title || ''}
-                          onChange={(e) => setData({ ...data, home: { ...data.home, title: e.target.value } })}
-                          className="w-full p-2.5 bg-[#FAF8F5] border border-[#E8E1D9] rounded-lg font-serif-luxury text-base focus:outline-none focus:border-[#8C6D46]"
-                        />
-                      </div>
-
-                      <div className="sm:col-span-2">
-                        <label className="block font-semibold mb-1">Deskripsi Hero</label>
-                        <textarea
-                          value={data.home.description || ''}
-                          onChange={(e) => setData({ ...data, home: { ...data.home, description: e.target.value } })}
-                          rows={3}
-                          className="w-full p-2.5 bg-[#FAF8F5] border border-[#E8E1D9] rounded-lg focus:outline-none focus:border-[#8C6D46]"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block font-semibold mb-1">Teks Tombol 1</label>
-                        <input
-                          type="text"
-                          value={data.home.button1Text || ''}
-                          onChange={(e) => setData({ ...data, home: { ...data.home, button1Text: e.target.value } })}
-                          className="w-full p-2.5 bg-[#FAF8F5] border border-[#E8E1D9] rounded-lg focus:outline-none focus:border-[#8C6D46]"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block font-semibold mb-1">Link Tombol 1</label>
-                        <input
-                          type="text"
-                          value={data.home.button1Link || ''}
-                          onChange={(e) => setData({ ...data, home: { ...data.home, button1Link: e.target.value } })}
-                          placeholder="#tema atau https://..."
-                          className="w-full p-2.5 bg-[#FAF8F5] border border-[#E8E1D9] rounded-lg focus:outline-none focus:border-[#8C6D46]"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block font-semibold mb-1">Teks Tombol 2</label>
-                        <input
-                          type="text"
-                          value={data.home.button2Text || ''}
-                          onChange={(e) => setData({ ...data, home: { ...data.home, button2Text: e.target.value } })}
-                          className="w-full p-2.5 bg-[#FAF8F5] border border-[#E8E1D9] rounded-lg focus:outline-none focus:border-[#8C6D46]"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block font-semibold mb-1">Link Tombol 2</label>
-                        <input
-                          type="text"
-                          value={data.home.button2Link || ''}
-                          onChange={(e) => setData({ ...data, home: { ...data.home, button2Link: e.target.value } })}
-                          placeholder="#pesan atau https://..."
-                          className="w-full p-2.5 bg-[#FAF8F5] border border-[#E8E1D9] rounded-lg focus:outline-none focus:border-[#8C6D46]"
-                        />
-                      </div>
-                    </div>
+                  <div className="sm:col-span-2">
+                    <label className="block font-semibold mb-1">Judul Utama Hero</label>
+                    <input
+                      type="text"
+                      value={data.home.title}
+                      onChange={(e) => setData({ ...data, home: { ...data.home, title: e.target.value } })}
+                      className="w-full p-2.5 bg-[#FAF8F5] border border-[#E8E1D9] rounded-lg font-serif-luxury text-base focus:outline-none focus:border-[#8C6D46]"
+                    />
                   </div>
-
-                  {/* Gambar Hero */}
-                  <div className="pt-5 border-t border-[#E8E1D9] space-y-4">
-                    <div className="text-xs font-bold uppercase tracking-wider text-[#8C6D46]">
-                      Gambar Hero
-                    </div>
-
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 text-xs">
-                      <div>
-                        <label className="block font-semibold mb-1">URL Gambar Hero</label>
-                        <input
-                          type="text"
-                          value={data.home.heroImage || ''}
-                          onChange={(e) => setData({ ...data, home: { ...data.home, heroImage: e.target.value } })}
-                          placeholder="https://.../hero.jpg atau /assets/images/hero.jpg"
-                          className="w-full p-2.5 bg-[#FAF8F5] border border-[#E8E1D9] rounded-lg focus:outline-none focus:border-[#8C6D46]"
-                        />
-                        <p className="text-[11px] text-[#766E65] mt-1">
-                          Gambar ini akan tampil pada card Hero di halaman utama.
-                        </p>
-                      </div>
-
-                      <div>
-                        <label className="block font-semibold mb-1">Link pada Gambar Hero</label>
-                        <input
-                          type="url"
-                          value={data.home.heroImageLink || ''}
-                          onChange={(e) => setData({ ...data, home: { ...data.home, heroImageLink: e.target.value } })}
-                          placeholder="https://ngulemin.id/preview/elegant-rose"
-                          className="w-full p-2.5 bg-[#FAF8F5] border border-[#E8E1D9] rounded-lg focus:outline-none focus:border-[#8C6D46]"
-                        />
-                        <p className="text-[11px] text-[#766E65] mt-1">
-                          Saat gambar Hero diklik, pengunjung akan diarahkan ke URL ini.
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="rounded-xl border border-[#E8E1D9] bg-[#FAF8F5] p-3">
-                      <div className="text-[11px] font-semibold text-[#766E65] mb-2">
-                        Preview Gambar Hero
-                      </div>
-                      <div className="w-full max-w-md mx-auto overflow-hidden rounded-xl border border-[#E8E1D9] bg-white">
-                        <img
-                          src={data.home.heroImage || heroMockup}
-                          alt="Preview Hero"
-                          className="w-full h-auto object-cover"
-                          referrerPolicy="no-referrer"
-                        />
-                      </div>
-                    </div>
+                  <div className="sm:col-span-2">
+                    <label className="block font-semibold mb-1">Deskripsi Hero</label>
+                    <textarea
+                      value={data.home.description}
+                      onChange={(e) => setData({ ...data, home: { ...data.home, description: e.target.value } })}
+                      rows={3}
+                      className="w-full p-2.5 bg-[#FAF8F5] border border-[#E8E1D9] rounded-lg focus:outline-none focus:border-[#8C6D46]"
+                    />
                   </div>
-
-                  {/* Statistik */}
-                  <div className="pt-5 border-t border-[#E8E1D9] space-y-4">
-                    <div className="text-xs font-bold uppercase tracking-wider text-[#8C6D46]">
-                      Statistik yang Tampil di Halaman Utama
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
-                      <div>
-                        <label className="block font-semibold mb-1">Jumlah Pasangan Bahagia</label>
-                        <input
-                          type="text"
-                          value={data.home.happyCouples || ''}
-                          onChange={(e) => setData({ ...data, home: { ...data.home, happyCouples: e.target.value } })}
-                          placeholder="500+"
-                          className="w-full p-2.5 bg-[#FAF8F5] border border-[#E8E1D9] rounded-lg focus:outline-none focus:border-[#8C6D46]"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block font-semibold mb-1">Rating Kepuasan</label>
-                        <input
-                          type="text"
-                          value={data.home.satisfactionRating || ''}
-                          onChange={(e) => setData({ ...data, home: { ...data.home, satisfactionRating: e.target.value } })}
-                          placeholder="4.9/5"
-                          className="w-full p-2.5 bg-[#FAF8F5] border border-[#E8E1D9] rounded-lg focus:outline-none focus:border-[#8C6D46]"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block font-semibold mb-1">Proses Cepat</label>
-                        <input
-                          type="text"
-                          value={data.home.fastProcess || ''}
-                          onChange={(e) => setData({ ...data, home: { ...data.home, fastProcess: e.target.value } })}
-                          placeholder="1-24 Jam"
-                          className="w-full p-2.5 bg-[#FAF8F5] border border-[#E8E1D9] rounded-lg focus:outline-none focus:border-[#8C6D46]"
-                        />
-                      </div>
-                    </div>
+                  <div>
+                    <label className="block font-semibold mb-1">Teks Tombol 1</label>
+                    <input
+                      type="text"
+                      value={data.home.button1Text}
+                      onChange={(e) => setData({ ...data, home: { ...data.home, button1Text: e.target.value } })}
+                      className="w-full p-2.5 bg-[#FAF8F5] border border-[#E8E1D9] rounded-lg focus:outline-none focus:border-[#8C6D46]"
+                    />
                   </div>
-
-                  <div className="pt-4 border-t border-[#E8E1D9] flex justify-end">
-                    <button
-                      type="button"
-                      onClick={() => { void saveHome(); }}
-                      className="px-5 py-2.5 text-xs font-semibold text-white bg-[#8C6D46] hover:bg-[#735735] rounded-lg shadow-sm"
-                    >
-                      Simpan Home & Hero
-                    </button>
+                  <div>
+                    <label className="block font-semibold mb-1">Teks Tombol 2</label>
+                    <input
+                      type="text"
+                      value={data.home.button2Text}
+                      onChange={(e) => setData({ ...data, home: { ...data.home, button2Text: e.target.value } })}
+                      className="w-full p-2.5 bg-[#FAF8F5] border border-[#E8E1D9] rounded-lg focus:outline-none focus:border-[#8C6D46]"
+                    />
                   </div>
                 </div>
               </div>
@@ -3319,9 +3084,8 @@ Catatan: ${orderForm.catatan || '-'}`;
                         return;
                       }
                       const updated = [...existing, trimmed];
-                      setData((prev: typeof INITIAL_DATA) => ({ ...prev, categories: updated }));
+                      saveCategories(updated, existing);
                       setNewCategoryInput('');
-                      triggerToast(`Kategori "${trimmed}" berhasil ditambahkan!`);
                     }}
                     className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 pt-1"
                   >
@@ -3363,11 +3127,16 @@ Catatan: ${orderForm.catatan || '-'}`;
                               type="button"
                               onClick={() => {
                                 openDeleteConfirm("Hapus Kategori", `Apakah Anda yakin ingin menghapus kategori "${cat}"?`, () => {
-                                  setData((prev: typeof INITIAL_DATA) => ({
-                                    ...prev,
-                                    categories: (prev.categories || []).filter((c: string) => c !== cat)
-                                  }));
-                                  triggerToast(`Kategori "${cat}" telah dihapus.`);
+                                  const previousCategories = [...(data.categories || [])];
+                                  const updated = previousCategories.filter(
+                                    (c: string) => c !== cat
+                                  );
+
+                                  if (selectedCategory === cat) {
+                                    setSelectedCategory('Semua');
+                                  }
+
+                                  saveCategories(updated, previousCategories);
                                 });
                               }}
                               className="text-gray-400 hover:text-red-500 p-0.5 rounded"
@@ -3415,12 +3184,13 @@ Catatan: ${orderForm.catatan || '-'}`;
                   {/* Tabel Katalog Tema */}
                   <div className="border border-[#E8E1D9] rounded-xl overflow-hidden bg-white shadow-2xs">
                     <div className="overflow-x-auto">
-                      <table className="w-full text-left border-collapse min-w-[620px]">
+                      <table className="w-full text-left border-collapse min-w-[720px]">
                         <thead>
                           <tr className="bg-[#FAF8F5] border-b border-[#E8E1D9] text-[11px] font-bold text-[#766E65] uppercase tracking-wider">
                             <th className="py-3 px-4 w-24">Preview</th>
                             <th className="py-3 px-4">Nama & Deskripsi Tema</th>
                             <th className="py-3 px-4 w-40">Kategori</th>
+                            <th className="py-3 px-4 w-32">Harga</th>
                             <th className="py-3 px-4 w-28 text-center">Status</th>
                             <th className="py-3 px-4 w-36 text-center">Aksi</th>
                           </tr>
@@ -3480,6 +3250,13 @@ Catatan: ${orderForm.catatan || '-'}`;
                               <td className="py-3 px-4 align-middle">
                                 <span className="inline-block bg-[#8C6D46]/10 text-[#8C6D46] font-semibold text-[11px] px-2.5 py-1 rounded-full border border-[#8C6D46]/20">
                                   {t.Category || "Umum"}
+                                </span>
+                              </td>
+
+                              {/* Harga */}
+                              <td className="py-3 px-4 align-middle">
+                                <span className="font-mono font-bold text-xs text-[#8C6D46]">
+                                  {formatRupiah(t.Harga)}
                                 </span>
                               </td>
 
@@ -3819,38 +3596,21 @@ Catatan: ${orderForm.catatan || '-'}`;
             {/* HOW TO ORDER */}
             {dashTab === 'howto' && (
               <div className="bg-white p-6 rounded-2xl border border-[#E8E1D9] shadow-sm space-y-6">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-[#E8E1D9] pb-4">
-                  <div>
-                    <h2 className="text-xl font-serif-luxury font-bold text-[#2D2723]">Kelola Langkah Cara Pesan</h2>
-                    <p className="text-xs text-[#766E65] mt-1">
-                      Nomor otomatis dimulai dari 01 di bagian paling atas. Menghapus langkah akan menyesuaikan nomor berikutnya.
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={addHowToOrderStep}
-                      className="px-4 py-2 text-xs font-semibold text-[#8C6D46] border border-[#8C6D46] hover:bg-[#8C6D46]/10 rounded-lg shadow-sm flex items-center gap-1.5"
-                    >
-                      <Plus className="w-4 h-4" /> Tambah Langkah
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { void saveHowToOrder(); }}
-                      className="px-4 py-2 text-xs font-semibold text-white bg-[#8C6D46] hover:bg-[#735735] rounded-lg shadow-sm"
-                    >
-                      Simpan Perubahan
-                    </button>
-                  </div>
+                <div className="flex items-center justify-between border-b border-[#E8E1D9] pb-4">
+                  <h2 className="text-xl font-serif-luxury font-bold text-[#2D2723]">Kelola Langkah Cara Pesan</h2>
+                  <button
+                    onClick={() => {void saveHowToOrder();}}
+                    className="px-4 py-2 text-xs font-semibold text-white bg-[#8C6D46] hover:bg-[#735735] rounded-lg shadow-sm"
+                  >
+                    Simpan Perubahan
+                  </button>
                 </div>
-
                 <div className="space-y-4">
                   {data.howToOrder.map((step: any, idx: number) => (
-                    <div key={`${idx}-${step.num}`} className="p-4 border border-[#E8E1D9] rounded-xl flex flex-col sm:flex-row items-start sm:items-center gap-4 bg-[#FAF8F5]/40">
+                    <div key={idx} className="p-4 border border-[#E8E1D9] rounded-xl flex flex-col sm:flex-row items-start sm:items-center gap-4 bg-[#FAF8F5]/40">
                       <div className="w-10 h-10 rounded-full bg-[#8C6D46]/10 text-[#8C6D46] font-bold text-base flex items-center justify-center shrink-0">
-                        {String(idx + 1).padStart(2, '0')}
+                        {step.num}
                       </div>
-
                       <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3 w-full text-xs">
                         <div>
                           <label className="block font-semibold text-[#2D2723] mb-1">Judul Langkah</label>
@@ -3865,7 +3625,6 @@ Catatan: ${orderForm.catatan || '-'}`;
                             className="w-full p-2 bg-white border border-[#E8E1D9] rounded-lg focus:outline-none focus:border-[#8C6D46]"
                           />
                         </div>
-
                         <div>
                           <label className="block font-semibold text-[#2D2723] mb-1">Deskripsi Langkah</label>
                           <input
@@ -3880,24 +3639,8 @@ Catatan: ${orderForm.catatan || '-'}`;
                           />
                         </div>
                       </div>
-
-                      <button
-                        type="button"
-                        onClick={() => deleteHowToOrderStep(idx)}
-                        className="self-end sm:self-center p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg border border-red-200 transition-colors shrink-0"
-                        title={`Hapus langkah ${String(idx + 1).padStart(2, '0')}`}
-                        aria-label={`Hapus langkah ${String(idx + 1).padStart(2, '0')}`}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
                     </div>
                   ))}
-
-                  {data.howToOrder.length === 0 && (
-                    <div className="py-10 text-center text-xs text-[#766E65] border border-dashed border-[#E8E1D9] rounded-xl">
-                      Belum ada langkah. Klik "Tambah Langkah" untuk membuat langkah pertama.
-                    </div>
-                  )}
                 </div>
               </div>
             )}
@@ -4137,28 +3880,13 @@ Catatan: ${orderForm.catatan || '-'}`;
                 {/* 2. Logo Website & Brand Identity */}
                 <div className="bg-white p-6 rounded-2xl border border-[#E8E1D9] shadow-sm space-y-4">
                   <div className="border-b border-[#E8E1D9] pb-4">
-                    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-                      <div>
-                        <h2 className="text-xl font-serif-luxury font-bold text-[#2D2723] flex items-center gap-2">
-                          <ImageIcon className="w-5 h-5 text-[#8C6D46]" /> Logo Website & Identitas Navbar
-                        </h2>
-                        <p className="text-xs text-[#766E65] mt-1">
-                          Ubah logo, nama brand, dan tagline yang digunakan pada navbar dan halaman utama website.
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => { void saveBrandIdentity(); }}
-                        className="px-4 py-2 text-xs font-semibold text-white bg-[#8C6D46] hover:bg-[#735735] rounded-lg shadow-sm whitespace-nowrap"
-                      >
-                        Simpan Pengaturan
-                      </button>
-                    </div>
+                    <h2 className="text-xl font-serif-luxury font-bold text-[#2D2723] flex items-center gap-2">
+                      <ImageIcon className="w-5 h-5 text-[#8C6D46]" /> Logo Website & Identitas Navbar
+                    </h2>
+                    <p className="text-xs text-[#766E65] mt-1">
+                      Ubah logo NGULEMIN di navbar menggunakan link file gambar (.jpg, .png, .svg). Saat logo diklik, pengunjung akan diarahkan ke Home.
+                    </p>
                   </div>
-
-                  <p className="text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-2">
-                    Setelah disimpan, logo, nama brand, dan tagline akan digunakan pada halaman utama website.
-                  </p>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
                     <div className="sm:col-span-2">
@@ -4768,7 +4496,17 @@ Catatan: ${orderForm.catatan || '-'}`;
                   />
                 </div>
 
-
+                <div>
+                  <label className="block font-semibold text-[#2D2723] mb-1">Harga (Rp) *</label>
+                  <input
+                    type="number"
+                    required
+                    min={0}
+                    value={themeModal.data.Harga}
+                    onChange={(e) => setThemeModal({ ...themeModal, data: { ...themeModal.data, Harga: Number(e.target.value) } })}
+                    className="w-full p-2.5 bg-[#FAF8F5] border border-[#E8E1D9] rounded-lg focus:outline-none focus:border-[#8C6D46]"
+                  />
+                </div>
 
                 <div>
                   <label className="block font-semibold text-[#2D2723] mb-1">Status</label>
@@ -5039,17 +4777,26 @@ Catatan: ${orderForm.catatan || '-'}`;
       {/* 4. MODAL TESTIMONI */}
       {testiModal.open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
-          <div className="bg-white rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto border border-[#E8E1D9] shadow-2xl flex flex-col">
-            <div className="p-5 border-b border-[#E8E1D9] flex items-center justify-between sticky top-0 bg-white z-10">
+          <div className="bg-white rounded-2xl w-full max-w-md border border-[#E8E1D9] shadow-2xl flex flex-col">
+            <div className="p-5 border-b border-[#E8E1D9] flex items-center justify-between">
               <h3 className="text-lg font-serif-luxury font-bold text-[#2D2723]">
                 {testiModal.isEdit ? "Edit Testimoni" : "Tambah Testimoni Baru"}
               </h3>
-              <button type="button" onClick={() => setTestiModal(prev => ({ ...prev, open: false }))} className="p-1 text-[#766E65] hover:text-[#2D2723]" aria-label="Tutup">
+              <button
+                onClick={() => setTestiModal(prev => ({ ...prev, open: false }))}
+                className="p-1 text-[#766E65] hover:text-[#2D2723]"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={(e) => { e.preventDefault(); void saveTestimonial(); }} className="p-5 space-y-4 text-xs">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                void saveTestimonial();
+              }}
+              className="p-5 space-y-3.5 text-xs"
+            >
               <div>
                 <label className="block font-semibold text-[#2D2723] mb-1">Nama Pasangan / Klien *</label>
                 <input
@@ -5060,54 +4807,6 @@ Catatan: ${orderForm.catatan || '-'}`;
                   placeholder="Contoh: Dimas & Sarah"
                   className="w-full p-2.5 bg-[#FAF8F5] border border-[#E8E1D9] rounded-lg focus:outline-none focus:border-[#8C6D46]"
                 />
-              </div>
-
-              <div>
-                <label className="block font-semibold text-[#2D2723] mb-1">Gambar Testimoni</label>
-                <input
-                  type="url"
-                  value={testiModal.data.photo}
-                  onChange={(e) => setTestiModal({ ...testiModal, data: { ...testiModal.data, photo: e.target.value } })}
-                  placeholder="https://images.unsplash.com/..."
-                  className="w-full p-2.5 bg-[#FAF8F5] border border-[#E8E1D9] rounded-lg focus:outline-none focus:border-[#8C6D46]"
-                />
-                <div className="mt-2 flex items-center gap-3">
-                  <div className="w-14 h-14 rounded-full overflow-hidden border border-[#E8E1D9] bg-[#FAF8F5] shrink-0">
-                    {testiModal.data.photo ? (
-                      <img
-                        src={testiModal.data.photo}
-                        alt="Preview foto testimoni"
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-[10px] text-[#A9A198]">Foto</div>
-                    )}
-                  </div>
-                  <p className="text-[11px] text-[#766E65]">Masukkan URL gambar. Preview akan tampil sebelum disimpan.</p>
-                </div>
-              </div>
-
-              <div className="pt-1">
-                <label className="block font-semibold text-[#2D2723] mb-1">Rating Bintang</label>
-                <div className="flex flex-wrap items-center gap-1.5" role="radiogroup" aria-label="Rating testimoni">
-                  {[1, 2, 3, 4, 5].map((star) => (
-                    <button
-                      key={star}
-                      type="button"
-                      onClick={() => setTestiModal({ ...testiModal, data: { ...testiModal.data, rating: star } })}
-                      className={`w-9 h-9 rounded-lg border text-lg transition-colors ${
-                        star <= testiModal.data.rating
-                          ? 'bg-amber-50 border-amber-300 text-amber-500'
-                          : 'bg-[#FAF8F5] border-[#E8E1D9] text-[#C9C1B8] hover:text-amber-400'
-                      }`}
-                      aria-label={`${star} bintang`}
-                      aria-pressed={star === testiModal.data.rating}
-                    >
-                      ★
-                    </button>
-                  ))}
-                  <span className="ml-1 text-xs font-semibold text-[#766E65]">{testiModal.data.rating}/5</span>
-                </div>
               </div>
 
               <div>
@@ -5124,7 +4823,7 @@ Catatan: ${orderForm.catatan || '-'}`;
               <div>
                 <label className="block font-semibold text-[#2D2723] mb-1">Isi Ulasan Testimoni *</label>
                 <textarea
-                  rows={4}
+                  rows={3}
                   required
                   value={testiModal.data.testi}
                   onChange={(e) => setTestiModal({ ...testiModal, data: { ...testiModal.data, testi: e.target.value } })}
@@ -5134,10 +4833,17 @@ Catatan: ${orderForm.catatan || '-'}`;
               </div>
 
               <div className="pt-3 border-t border-[#E8E1D9] flex items-center justify-end gap-3">
-                <button type="button" onClick={() => setTestiModal(prev => ({ ...prev, open: false }))} className="px-4 py-2 text-xs font-semibold text-[#766E65] hover:text-[#2D2723]">
+                <button
+                  type="button"
+                  onClick={() => setTestiModal(prev => ({ ...prev, open: false }))}
+                  className="px-4 py-2 text-xs font-semibold text-[#766E65] hover:text-[#2D2723]"
+                >
                   Batal
                 </button>
-                <button type="submit" className="px-5 py-2 text-xs font-semibold text-white bg-[#8C6D46] hover:bg-[#735735] rounded-xl shadow-sm">
+                <button
+                  type="submit"
+                  className="px-5 py-2 text-xs font-semibold text-white bg-[#8C6D46] hover:bg-[#735735] rounded-xl shadow-sm"
+                >
                   {testiModal.isEdit ? "Simpan" : "Tambah"}
                 </button>
               </div>
