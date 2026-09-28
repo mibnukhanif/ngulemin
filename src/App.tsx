@@ -73,6 +73,8 @@ const INITIAL_DATA = {
       ((window as any).CONFIG?.API_URL as string) ||
       ""
   },
+  // Fallback kategori untuk database lama. Setelah pengelolaan kategori dilakukan,
+  // daftar permanen disimpan di Settings.themeCategories.
   categories: [
     "Floral & Romantic",
     "Adat & Traditional",
@@ -351,6 +353,37 @@ const cleanApiUrlValue = (value: any) => {
   return markdownMatch ? markdownMatch[1] : text;
 };
 
+// Kategori tema disimpan permanen di Settings sebagai JSON.
+// Jika setting ini belum ada pada database lama, kita fallback ke kategori yang
+// berasal dari data lama/theme agar instalasi lama tetap kompatibel.
+const parsePersistedCategories = (value: any): string[] | null => {
+  if (Array.isArray(value)) {
+    return value
+      .map((item: any) => String(item).trim())
+      .filter(Boolean);
+  }
+
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const text = value.trim();
+  if (!text) return null;
+
+  try {
+    const parsed = JSON.parse(text);
+    if (Array.isArray(parsed)) {
+      return parsed
+        .map((item: any) => String(item).trim())
+        .filter(Boolean);
+    }
+  } catch {
+    // Bukan JSON valid; biarkan fallback bekerja.
+  }
+
+  return null;
+};
+
 const normalizeApiData = (apiData: any, currentData: any) => {
   const currentThemes = currentData.themes || [];
   const currentTestimonials = currentData.testimonials || [];
@@ -456,18 +489,29 @@ const normalizeApiData = (apiData: any, currentData: any) => {
         })
       : currentData.themes,
 
-    categories: Array.from(
-      new Set([
-        ...(currentData.categories || []),
-        ...(Array.isArray(apiData.themes)
-          ? apiData.themes
-              .map((theme: any) => theme.Category)
-              .filter((category: any) =>
-                typeof category === "string" && category.trim() !== ""
-              )
-          : [])
-      ])
-    ),
+    categories: (() => {
+      const persistedCategories = parsePersistedCategories(
+        apiData.settings?.themeCategories ??
+        currentData.settings?.themeCategories
+      );
+
+      if (persistedCategories !== null) {
+        return persistedCategories;
+      }
+
+      return Array.from(
+        new Set([
+          ...(currentData.categories || []),
+          ...(Array.isArray(apiData.themes)
+            ? apiData.themes
+                .map((theme: any) => theme.Category)
+                .filter((category: any) =>
+                  typeof category === "string" && category.trim() !== ""
+                )
+            : [])
+        ])
+      );
+    })(),
 
     pricing: Array.isArray(apiData.pricing)
       ? apiData.pricing.map((pkg: any) => ({
@@ -3319,9 +3363,34 @@ Catatan: ${orderForm.catatan || '-'}`;
                         return;
                       }
                       const updated = [...existing, trimmed];
-                      setData((prev: typeof INITIAL_DATA) => ({ ...prev, categories: updated }));
+
+                      // Simpan daftar kategori secara permanen di Settings.
+                      setData((prev: typeof INITIAL_DATA) => ({
+                        ...prev,
+                        categories: updated,
+                        settings: {
+                          ...prev.settings,
+                          themeCategories: JSON.stringify(updated)
+                        }
+                      }));
                       setNewCategoryInput('');
-                      triggerToast(`Kategori "${trimmed}" berhasil ditambahkan!`);
+
+                      triggerToast(`Kategori "${trimmed}" ditambahkan. Menyimpan...`);
+
+                      void callApi('updateSettings', {
+                        data: {
+                          themeCategories: JSON.stringify(updated)
+                        }
+                      })
+                        .then(() => {
+                          triggerToast(`Kategori "${trimmed}" berhasil disimpan.`);
+                        })
+                        .catch((error: any) => {
+                          void refreshAllData(false);
+                          triggerToast(
+                            error.message || 'Gagal menyimpan kategori ke Spreadsheet.'
+                          );
+                        });
                     }}
                     className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 pt-1"
                   >
@@ -3363,11 +3432,40 @@ Catatan: ${orderForm.catatan || '-'}`;
                               type="button"
                               onClick={() => {
                                 openDeleteConfirm("Hapus Kategori", `Apakah Anda yakin ingin menghapus kategori "${cat}"?`, () => {
+                                  const updated = (data.categories || []).filter(
+                                    (c: string) => c !== cat
+                                  );
+
+                                  if (selectedCategory === cat) {
+                                    setSelectedCategory("Semua");
+                                  }
+
+                                  // Hapus secara optimistis dari UI sekaligus simpan ke Settings.
                                   setData((prev: typeof INITIAL_DATA) => ({
                                     ...prev,
-                                    categories: (prev.categories || []).filter((c: string) => c !== cat)
+                                    categories: updated,
+                                    settings: {
+                                      ...prev.settings,
+                                      themeCategories: JSON.stringify(updated)
+                                    }
                                   }));
-                                  triggerToast(`Kategori "${cat}" telah dihapus.`);
+
+                                  triggerToast(`Kategori "${cat}" dihapus. Menyimpan...`);
+
+                                  void callApi('updateSettings', {
+                                    data: {
+                                      themeCategories: JSON.stringify(updated)
+                                    }
+                                  })
+                                    .then(() => {
+                                      triggerToast(`Kategori "${cat}" berhasil dihapus permanen.`);
+                                    })
+                                    .catch((error: any) => {
+                                      void refreshAllData(false);
+                                      triggerToast(
+                                        error.message || 'Gagal menyimpan penghapusan kategori.'
+                                      );
+                                    });
                                 });
                               }}
                               className="text-gray-400 hover:text-red-500 p-0.5 rounded"
